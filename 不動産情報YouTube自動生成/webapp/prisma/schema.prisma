@@ -1,0 +1,139 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// URLテーブル - スクレイピング対象URL管理
+model Url {
+  id           String    @id @default(cuid())
+  url          String    @unique
+  status       String    @default("PENDING") // PENDING, RUNNING, COMPLETED, ERROR
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // リレーション
+  property     Property?
+}
+
+// 物件テーブル - メインデータ
+model Property {
+  id               String   @id @default(cuid())
+  urlId            String   @unique
+  url              Url      @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  
+  // 基本情報
+  name             String
+  address          String
+  nearestStation   String?
+  walkMinutes      Int?
+  layout           String?    // 間取り (1LDK, 2DK, etc.)
+  area             Float?     // 面積 (㎡)
+  buildYear        Int?       // 築年
+  structure        String?    // 構造 (RC, SRC, etc.)
+  floors           String?    // 階数
+  
+  // 販売条件
+  price            Int        // 販売価格 (円)
+  maintenanceFee   Int?       // 管理費
+  repairReserve    Int?       // 修繕積立金
+  otherCosts       Int?       // その他費用
+  
+  // 賃料・投資情報
+  expectedRent     Int?       // 想定賃料
+  grossYield       Float?     // 表面利回り
+  netYield         Float?     // 実質利回り
+  vacancyRate      Float?     // 空室率
+  marketRentEstimate Int?     // 近隣相場賃料
+  
+  // 画像URL
+  exteriorImages   String?    // JSON array
+  interiorImages   String?    // JSON array
+  layoutImages     String?    // JSON array
+  
+  // 説明文
+  locationDesc     String?    // 立地説明
+  facilityDesc     String?    // 設備説明
+  investmentDesc   String?    // 投資価値コメント
+  
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  // リレーション
+  translations     Translation[]
+  videos           Video[]
+}
+
+// 翻訳テーブル - 多言語対応
+model Translation {
+  id             String   @id @default(cuid())
+  propertyId     String
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  
+  language       String   // EN, ZH_CN, ZH_TW
+  
+  // 翻訳済みテキスト
+  name           String?
+  address        String?
+  locationDesc   String?
+  facilityDesc   String?
+  investmentDesc String?
+  
+  // ナレーション用テキスト（セクション別）
+  scriptOpening    String?  // オープニング
+  scriptLocation   String?  // 立地紹介
+  scriptInterior   String?  // 内装・設備
+  scriptConditions String?  // 販売条件
+  scriptInvestment String?  // 投資情報
+  scriptSummary    String?  // まとめ
+  scriptDisclaimer String?  // 免責事項
+  
+  status         String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, ERROR
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([propertyId, language])
+}
+
+// 動画テーブル - 生成動画管理
+model Video {
+  id           String   @id @default(cuid())
+  propertyId   String
+  property     Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  
+  videoType    String   // STANDARD, SHORT
+  language     String   // EN, ZH_CN, ZH_TW
+  status       String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, ERROR
+  
+  // 生成結果
+  videoUrl     String?
+  thumbnailUrl String?
+  duration     Int?        // 秒数
+  
+  // パッケージJSON（nanobanana用）
+  packageJson  String?
+  
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([propertyId, videoType, language])
+}
+
+// 設定テーブル - システム設定
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

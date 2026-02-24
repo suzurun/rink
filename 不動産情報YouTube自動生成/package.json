@@ -1,0 +1,37 @@
+{
+  "name": "real-estate-video-automation",
+  "version": "1.0.0",
+  "description": "AIT42 + Worktree + TMUX integration for real estate video automation",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "jest",
+    "ait42": "ts-node src/ait42/coordinator.ts",
+    "worktree:create": "ts-node src/worktree/manager.ts create",
+    "worktree:list": "ts-node src/worktree/manager.ts list",
+    "tmux:create": "ts-node src/tmux/session-manager.ts create",
+    "tmux:list": "ts-node src/tmux/session-manager.ts list"
+  },
+  "keywords": [
+    "ait42",
+    "worktree",
+    "tmux",
+    "automation",
+    "ai-agents"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.11"
+  }
+}
