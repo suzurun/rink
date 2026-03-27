@@ -13,7 +13,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { getProperty, getUploadUrl, uploadFileToS3, getPropertyFiles, FileInfo } from '../api/properties';
 import { Property } from '../types/property';
 
@@ -32,7 +32,6 @@ const FILE_TABS: { key: FileType; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function PropertyDetail() {
-  const router = useRouter();
   const params = useParams();
   
   // URLからIDを取得（静的エクスポート対応）
@@ -202,11 +201,11 @@ export default function PropertyDetail() {
   // イベントハンドラー
   // ========================================
   const handleEdit = () => {
-    router.push(`/properties/${propertyId}/edit`);
+    window.location.href = `/properties/${propertyId}/edit`;
   };
 
   const handleBack = () => {
-    router.push('/properties');
+    window.location.href = '/properties';
   };
 
   const handleOpenMap = () => {

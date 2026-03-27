@@ -14,8 +14,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { getIdToken } from '../api/auth';
+import { getPropertiesForExport } from '../api/properties';
 
 // API ベース URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -80,7 +80,6 @@ interface UploadResult {
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'error';
 
 export default function BulkUpload() {
-  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State
@@ -91,6 +90,7 @@ export default function BulkUpload() {
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [previewData, setPreviewData] = useState<string[][] | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // モバイル検出
   useEffect(() => {
@@ -260,6 +260,53 @@ export default function BulkUpload() {
   };
 
   // ========================================
+  // CSV エクスポート（現在の物件データを出力）
+  // ========================================
+  const handleExportCSV = async () => {
+    setExporting(true);
+    setError(null);
+
+    try {
+      const response = await getPropertiesForExport();
+
+      if (response.status !== 'success' || !response.data.length) {
+        setError('エクスポートする物件データがありません');
+        setExporting(false);
+        return;
+      }
+
+      const bom = '\uFEFF';
+      const headerRow = CSV_HEADERS_JP.join(',');
+
+      const dataRows = response.data.map((p: Record<string, any>) => {
+        const values = CSV_HEADERS.map((key) => {
+          const val = p[key];
+          if (val == null) return '';
+          return String(val);
+        });
+        return values.map(escapeCSVField).join(',');
+      });
+
+      const csvContent = bom + headerRow + '\n' + dataRows.join('\n') + '\n';
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `properties_export_${today}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'エクスポートに失敗しました');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // ========================================
   // エラーファイルダウンロード
   // ========================================
   const handleDownloadErrorFile = () => {
@@ -284,6 +331,16 @@ export default function BulkUpload() {
   };
 
   // ========================================
+  // CSV値エスケープ
+  // ========================================
+  function escapeCSVField(value: string): string {
+    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
+  // ========================================
   // モバイル警告
   // ========================================
   if (isMobile) {
@@ -300,7 +357,9 @@ export default function BulkUpload() {
             PCでアクセスしてください。
           </p>
           <button
-            onClick={() => router.push('/properties')}
+            onClick={() => {
+              window.location.href = '/properties';
+            }}
             className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
           >
             物件一覧に戻る
@@ -321,7 +380,9 @@ export default function BulkUpload() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => router.push('/properties')}
+                onClick={() => {
+                  window.location.href = '/properties';
+                }}
                 className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
               >
                 <BackIcon className="w-5 h-5" />
@@ -358,15 +419,37 @@ export default function BulkUpload() {
             />
           </div>
 
-          {/* テンプレートダウンロード */}
+          {/* テンプレートダウンロード & データ出力 */}
           <div className="mt-6 pt-6 border-t border-slate-200">
-            <button
-              onClick={handleDownloadTemplate}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              <DownloadIcon className="w-4 h-4 mr-2" />
-              CSVテンプレートをダウンロード
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handleDownloadTemplate}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <DownloadIcon className="w-4 h-4 mr-2" />
+                CSVテンプレートをダウンロード
+              </button>
+              <button
+                onClick={handleExportCSV}
+                disabled={exporting}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {exporting ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    エクスポート中...
+                  </>
+                ) : (
+                  <>
+                    <ExportIcon className="w-4 h-4 mr-2" />
+                    現在の物件データをCSV出力
+                  </>
+                )}
+              </button>
+            </div>
             <p className="mt-2 text-xs text-slate-500">
               ※ CSVファイルはUTF-8形式で保存してください
             </p>
@@ -588,7 +671,9 @@ export default function BulkUpload() {
                 別のファイルをアップロード
               </button>
               <button
-                onClick={() => router.push('/properties')}
+                onClick={() => {
+                  window.location.href = '/properties';
+                }}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 物件一覧へ
@@ -702,6 +787,14 @@ function WarningIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+  );
+}
+
+function ExportIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
     </svg>
   );
 }

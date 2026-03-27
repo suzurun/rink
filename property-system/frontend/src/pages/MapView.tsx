@@ -77,6 +77,9 @@ export default function MapView() {
   const [typeMedium, setTypeMedium] = useState('');
   const [keyword, setKeyword] = useState('');
 
+  // カテゴリセグメント（複数選択可能、空=全表示）
+  const [activeCategories, setActiveCategories] = useState<Set<string>>(new Set());
+
   // 選択中の物件
   const [selectedProperty, setSelectedProperty] = useState<PropertyListItem | null>(null);
 
@@ -84,6 +87,29 @@ export default function MapView() {
   const mediumOptions = typeLarge
     ? LEGEND_DEFINITIONS.find((item) => item.type === typeLarge)?.mediumOptions || []
     : [];
+
+  // カテゴリトグル
+  const toggleCategory = useCallback((category: string) => {
+    setActiveCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearCategories = useCallback(() => {
+    setActiveCategories(new Set());
+  }, []);
+
+  // カテゴリでフィルターした物件リスト
+  const filteredProperties = useMemo(() => {
+    if (activeCategories.size === 0) return properties;
+    return properties.filter((p) => activeCategories.has(p.typeLarge));
+  }, [properties, activeCategories]);
 
   // ========================================
   // 認証チェック（未ログインはログインへ誘導）
@@ -170,7 +196,7 @@ export default function MapView() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchProperties();
+    fetchProperties();
     }
   }, [fetchProperties, isAuthenticated]);
 
@@ -300,14 +326,14 @@ export default function MapView() {
     markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = [];
 
-    if (properties.length === 0) return;
+    if (filteredProperties.length === 0) return;
 
     const bounds = new google.maps.LatLngBounds();
 
     const currentZoom = mapRef.current?.getZoom() ?? DEFAULT_ZOOM;
     const isMobile = window.innerWidth < LEGEND_COLLAPSE_BREAKPOINT;
 
-    properties.forEach((property) => {
+    filteredProperties.forEach((property) => {
       if (!property.lat || !property.lng) return;
 
       const position = { lat: property.lat, lng: property.lng };
@@ -352,7 +378,7 @@ export default function MapView() {
     });
 
     // 全マーカーが見えるようにズーム調整
-    if (properties.length > 0) {
+    if (filteredProperties.length > 0) {
       mapRef.current.fitBounds(bounds);
 
       // ズームが近すぎる場合は調整
@@ -364,7 +390,7 @@ export default function MapView() {
         google.maps.event.removeListener(listener);
       });
     }
-  }, [properties, loading, router, isAuthenticated]);
+  }, [filteredProperties, loading, router, isAuthenticated]);
 
   // ========================================
   // ズーム変更時にマーカーサイズを更新
@@ -451,21 +477,21 @@ export default function MapView() {
           <div className="flex items-center justify-between h-14 md:h-16">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => router.push('/properties')}
+                onClick={() => { window.location.href = '/properties'; }}
                 className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
               <h1 className="text-lg md:text-xl font-bold text-slate-800">地図ビュー</h1>
               <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-full">
-                {properties.length} 件
+                {filteredProperties.length} 件
               </span>
             </div>
 
             <div className="flex items-center gap-2">
               {/* 一覧ビュー切替 */}
               <button
-                onClick={() => router.push('/properties')}
+                onClick={() => { window.location.href = '/properties'; }}
                 className="inline-flex items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <ListIcon className="w-4 h-4 mr-1.5" />
@@ -488,6 +514,49 @@ export default function MapView() {
           </div>
         </div>
       </header>
+
+      {/* カテゴリセグメントバー */}
+      <div className="bg-white border-b border-slate-200 z-10">
+        <div className="px-4 py-2 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+          <button
+            onClick={clearCategories}
+            className={`flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+              activeCategories.size === 0
+                ? 'text-white bg-slate-700 border-slate-700'
+                : 'text-slate-600 bg-white border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            すべて
+          </button>
+          {LEGEND_DEFINITIONS.map((cat) => {
+            const isActive = activeCategories.has(cat.type);
+            const count = properties.filter((p) => p.typeLarge === cat.type).length;
+            return (
+              <button
+                key={cat.type}
+                onClick={() => toggleCategory(cat.type)}
+                className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                  isActive
+                    ? 'text-white border-transparent'
+                    : 'text-slate-600 bg-white border-slate-300 hover:bg-slate-50'
+                }`}
+                style={isActive ? { backgroundColor: cat.color, borderColor: cat.color } : {}}
+              >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: isActive ? '#fff' : cat.color }}
+                />
+                {cat.type}
+                {count > 0 && (
+                  <span className={`text-[10px] ${isActive ? 'text-white/80' : 'text-slate-400'}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* フィルターパネル */}
       {showFilters && (
@@ -612,8 +681,8 @@ export default function MapView() {
           <div className="absolute bottom-4 left-4 bg-white rounded-xl shadow-lg border border-slate-200 p-3 z-10">
             <div className="flex items-center justify-between gap-3 mb-2">
               <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                凡例
-              </h3>
+              凡例
+            </h3>
               {isSmallScreen && (
                 <button
                   onClick={() => setIsLegendCollapsed((prev) => !prev)}
@@ -631,17 +700,17 @@ export default function MapView() {
                     ズーム {LEGEND_SIMPLIFIED_ZOOM_THRESHOLD}+：主要カテゴリのみ表示
                   </p>
                 )}
-                <div className="space-y-1.5">
+            <div className="space-y-1.5">
                   {legendItems.map((item) => (
                     <div key={item.type} className="flex items-center gap-2">
-                      <span
+                  <span
                         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                         style={{ backgroundColor: item.color }}
-                      />
+                  />
                       <span className="text-sm text-slate-700">{item.type}</span>
-                    </div>
-                  ))}
                 </div>
+              ))}
+            </div>
               </>
             )}
           </div>
@@ -651,13 +720,13 @@ export default function MapView() {
         {mapLoaded && !mapError && (
           <div className="absolute top-4 left-4 sm:hidden bg-white rounded-lg shadow-md px-3 py-1.5 z-10">
             <span className="text-sm font-medium text-slate-700">
-              {properties.length} 件
+              {filteredProperties.length} 件
             </span>
           </div>
         )}
 
         {/* 位置情報がない物件の通知 */}
-        {mapLoaded && !loading && properties.length === 0 && !error && (
+        {mapLoaded && !loading && filteredProperties.length === 0 && !error && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 z-10">
             <p className="text-sm text-yellow-700">
               表示できる物件がありません（緯度経度が設定された物件のみ表示）

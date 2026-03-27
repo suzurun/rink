@@ -93,3 +93,6 @@ export function resolveBucketName(event: APIGatewayProxyEvent): string {
 
   return process.env.BUCKET_NAME || '';
 }
+
+
+

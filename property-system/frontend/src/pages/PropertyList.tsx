@@ -177,6 +177,14 @@ export default function PropertyList() {
                 <MapIcon className="w-4 h-4 mr-2" />
                 地図で表示
               </button>
+              {/* テーブル編集（PCのみ） */}
+              <button
+                onClick={() => { window.location.href = '/properties/table'; }}
+                className="hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                <TableIcon className="w-4 h-4 mr-2" />
+                テーブル編集
+              </button>
               {/* 一括登録（PCのみ） */}
               <button
                 onClick={() => router.push('/bulk-upload')}
@@ -484,9 +492,7 @@ function PropertyCard({ property }: PropertyCardProps) {
       {/* 詳細ボタン */}
       <div className="mt-4 pt-3 border-t border-slate-100">
         <button
-          onClick={() => {
-            window.location.href = `/properties/${property.propertyId}/`;
-          }}
+          onClick={() => { window.location.href = `/properties/${property.propertyId}/`; }}
           className="block w-full py-2 px-4 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors text-center cursor-pointer"
         >
           詳細を見る →
@@ -552,6 +558,14 @@ function UserIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  );
+}
+
+function TableIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M10 3v18M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
     </svg>
   );
 }

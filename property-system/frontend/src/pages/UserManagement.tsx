@@ -14,7 +14,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { isAdmin, getIdToken, getFreshIdToken } from '../api/auth';
 
 // API ベース URL
@@ -42,8 +41,6 @@ interface User {
 type ModalType = 'invite' | 'editGroup' | 'confirm' | null;
 
 export default function UserManagement() {
-  const router = useRouter();
-
   // State
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,11 +76,11 @@ export default function UserManagement() {
       setCheckingPermission(false);
 
       if (!admin) {
-        router.push('/permission-error');
+        window.location.href = '/permission-error';
       }
     };
     checkPermission();
-  }, [router]);
+  }, []);
 
   // ========================================
   // ユーザー一覧取得
@@ -329,7 +326,9 @@ export default function UserManagement() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => router.push('/properties')}
+                onClick={() => {
+                  window.location.href = '/properties';
+                }}
                 className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
               >
                 <BackIcon className="w-5 h-5" />

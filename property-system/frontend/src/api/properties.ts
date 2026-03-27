@@ -100,6 +100,24 @@ export async function getProperties(
 }
 
 /**
+ * GET /properties?export=true - 全フィールド付き物件一覧取得（CSV出力用）
+ */
+export async function getPropertiesForExport(): Promise<{
+  status: string;
+  data: Array<Record<string, any>>;
+  total: number;
+}> {
+  const url = `${API_BASE_URL}/properties?export=true&limit=1000`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  return handleResponse(response);
+}
+
+/**
  * GET /properties/{propertyId} - 物件詳細取得
  */
 export async function getProperty(propertyId: string): Promise<PropertyDetailResponse> {

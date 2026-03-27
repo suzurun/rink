@@ -12,8 +12,8 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import { getProperty, updateProperty } from '../api/properties';
 import {
   Property,
@@ -77,7 +77,6 @@ const initialFormData: PropertyFormData = {
 };
 
 export default function PropertyEdit() {
-  const router = useRouter();
   const params = useParams();
   
   // URLからIDを取得（静的エクスポート対応）
@@ -239,15 +238,11 @@ export default function PropertyEdit() {
   // ========================================
   // 住所から緯度経度を取得（Geocoding）
   // ========================================
-  const handleGeocode = async () => {
-    const fullAddress = `${formData.prefecture}${formData.city}${formData.address}`;
-    if (!fullAddress.trim()) {
-      setErrors((prev) => ({ ...prev, address: '住所を入力してください' }));
-      return;
-    }
+  const geocodeFromAddress = useCallback(async (prefecture: string, city: string, address: string) => {
+    const fullAddress = `${prefecture}${city}${address}`;
+    if (!fullAddress.trim()) return;
 
     setGeocoding(true);
-
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&countrycodes=jp`
@@ -261,15 +256,34 @@ export default function PropertyEdit() {
           lng: parseFloat(data[0].lon).toFixed(6),
         }));
         setHasChanges(true);
-      } else {
-        alert('緯度経度が取得できませんでした。手動で入力してください。');
       }
     } catch {
-      alert('緯度経度の取得に失敗しました');
+      // 自動取得失敗は無視
     } finally {
       setGeocoding(false);
     }
+  }, []);
+
+  const handleGeocode = async () => {
+    if (!formData.prefecture || !formData.city.trim() || !formData.address.trim()) {
+      setErrors((prev) => ({ ...prev, address: '住所を入力してください' }));
+      return;
+    }
+    await geocodeFromAddress(formData.prefecture, formData.city, formData.address);
+    if (!formData.lat && !formData.lng) {
+      alert('緯度経度が取得できませんでした。手動で入力してください。');
+    }
   };
+
+  // 住所が揃って緯度経度が未設定なら自動取得
+  useEffect(() => {
+    if (formData.prefecture && formData.city.trim() && formData.address.trim() && !formData.lat && !formData.lng) {
+      const timer = setTimeout(() => {
+        geocodeFromAddress(formData.prefecture, formData.city, formData.address);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [formData.prefecture, formData.city, formData.address, formData.lat, formData.lng, geocodeFromAddress]);
 
   // ========================================
   // バリデーション
@@ -367,7 +381,7 @@ export default function PropertyEdit() {
       setHasChanges(false);
       const redirectTo = redirectOverride || pendingRedirect || `/properties/${propertyId}`;
       setPendingRedirect(null);
-      router.push(redirectTo);
+      window.location.href = redirectTo;
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : '更新に失敗しました');
     } finally {
@@ -385,7 +399,7 @@ export default function PropertyEdit() {
   // ========================================
   const handleNavigate = (target: string) => {
     if (!hasChanges) {
-      router.push(target);
+      window.location.href = target;
       return;
     }
 
@@ -394,7 +408,7 @@ export default function PropertyEdit() {
       setPendingRedirect(target);
       submitForm(target);
     } else {
-      router.push(target);
+      window.location.href = target;
     }
   };
 
@@ -430,7 +444,7 @@ export default function PropertyEdit() {
       }
 
       alert('物件を削除しました');
-      router.push('/properties');
+      window.location.href = '/properties';
     } catch (err) {
       alert(err instanceof Error ? err.message : '削除に失敗しました');
     }
@@ -453,7 +467,9 @@ export default function PropertyEdit() {
             PCでアクセスしてください。
           </p>
           <button
-            onClick={() => router.push(`/properties/${propertyId}`)}
+            onClick={() => {
+              window.location.href = `/properties/${propertyId}`;
+            }}
             className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
           >
             物件詳細に戻る
