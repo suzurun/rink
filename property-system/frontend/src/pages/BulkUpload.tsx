@@ -176,9 +176,13 @@ export default function BulkUpload() {
     try {
       const token = getIdToken();
 
-      // FormData でファイルを送信
-      const formData = new FormData();
-      formData.append('file', selectedFile);
+      // CSVファイルの内容を読み取ってJSON形式で送信
+      const csvContent = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+        reader.readAsText(selectedFile, 'UTF-8');
+      });
 
       // アップロード進捗シミュレーション
       const progressInterval = setInterval(() => {
@@ -187,12 +191,16 @@ export default function BulkUpload() {
 
       setUploadStatus('processing');
 
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+
       const response = await fetch(`${API_BASE_URL}/properties/bulk`, {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'X-Tenant-Host': hostname,
         },
-        body: formData,
+        body: JSON.stringify({ csv: csvContent }),
       });
 
       clearInterval(progressInterval);
