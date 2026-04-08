@@ -118,17 +118,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // ========================================
     // 6. ページネーション
     // ========================================
+    const qs = event.queryStringParameters || {};
+    const isExport = qs.export === 'true';
+
     const total = items.length;
     const { page, limit } = params;
-    const startIndex = (page - 1) * limit;
-    const paginatedItems = items.slice(startIndex, startIndex + limit);
+    const paginatedItems = isExport
+      ? items
+      : items.slice((page - 1) * limit, page * limit);
 
     // ========================================
     // 7. レスポンス
     // ========================================
-    const qs = event.queryStringParameters || {};
-    const isExport = qs.export === 'true';
-
     const responseData = isExport
       ? paginatedItems
       : paginatedItems.map((item) => ({
@@ -201,7 +202,7 @@ function parseQueryParams(event: APIGatewayProxyEvent): QueryParams {
     staff: qs.staff?.trim() || undefined,
     sortBy: (qs.sortBy as QueryParams['sortBy']) || 'name',
     page: Math.max(1, parseInt(qs.page || '1', 10)),
-    limit: Math.min(100, Math.max(1, parseInt(qs.limit || '20', 10))),
+    limit: Math.max(1, parseInt(qs.limit || '20', 10)),
   };
 }
 

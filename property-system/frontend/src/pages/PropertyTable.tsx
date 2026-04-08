@@ -38,6 +38,7 @@ interface PropertyRow {
   area?: number;
   owner?: string;
   staff?: string;
+  siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
 }
@@ -57,10 +58,9 @@ const COLUMNS: ColumnDef[] = [
   { key: 'typeLarge', label: '大項目', width: 140, editable: true, type: 'select', options: TYPE_LARGE_OPTIONS },
   { key: 'typeMedium', label: '中項目', width: 120, editable: true, type: 'select' },
   { key: 'typeSmall', label: '小項目', width: 100, editable: true },
-  { key: 'staff', label: '担当者', width: 90, editable: true },
+  { key: 'staff', label: '営業担当者', width: 100, editable: true },
+  { key: 'siteStaff', label: '現場担当者', width: 100, editable: true },
   { key: 'owner', label: '施主', width: 120, editable: true },
-  { key: 'zipcode', label: '郵便番号', width: 90, editable: true },
-  { key: 'prefecture', label: '都道府県', width: 80, editable: true },
   { key: 'city', label: '市区町村', width: 120, editable: true },
   { key: 'address', label: '番地', width: 160, editable: true },
   { key: 'landUse', label: '用途地域', width: 120, editable: true },

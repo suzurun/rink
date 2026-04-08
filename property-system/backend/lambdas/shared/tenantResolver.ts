@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent } from 'aws-lambda';
 
 const TENANT_TABLE_MAP: Record<string, string> = {
-  'link.myvalue.jp': 'Properties-prod',
+  'rink.myvalue.jp': 'Properties-prod',
 };
 
 const DEFAULT_TABLE = process.env.TABLE_NAME || 'Properties';
@@ -84,7 +84,7 @@ export function resolveBucketName(event: APIGatewayProxyEvent): string {
   const host = extractTenantHost(event);
 
   const TENANT_BUCKET_MAP: Record<string, string> = {
-    'link.myvalue.jp': process.env.BUCKET_NAME || '',
+    'rink.myvalue.jp': process.env.BUCKET_NAME || '',
   };
 
   if (TENANT_BUCKET_MAP[host]) {

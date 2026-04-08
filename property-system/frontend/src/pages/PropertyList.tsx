@@ -62,6 +62,9 @@ export default function PropertyList() {
     checkAdmin();
   }, []);
 
+  // マップ未登録フィルター
+  const [noMapOnly, setNoMapOnly] = useState(false);
+
   // フィルターパネル表示
   const [showFilters, setShowFilters] = useState(false);
 
@@ -120,6 +123,7 @@ export default function PropertyList() {
     setTypeLarge('');
     setTypeMedium('');
     setStaff('');
+    setNoMapOnly(false);
     setCurrentPage(1);
   };
 
@@ -231,6 +235,20 @@ export default function PropertyList() {
                   {option.label}
                 </button>
               ))}
+              <div className="ml-auto">
+                <button
+                  type="button"
+                  onClick={() => { setNoMapOnly(!noMapOnly); setCurrentPage(1); }}
+                  className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
+                    noMapOnly
+                      ? 'text-orange-700 bg-orange-50 border-orange-300'
+                      : 'text-slate-700 bg-white border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <NoMapIcon className="w-4 h-4 mr-1.5" />
+                  マップ未登録のみ
+                </button>
+              </div>
             </div>
 
             {/* 検索バー */}
@@ -383,12 +401,14 @@ export default function PropertyList() {
         {/* 物件カード一覧 */}
         {!loading && !error && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {properties.map((property) => (
-              <PropertyCard
-                key={property.propertyId}
-                property={property}
-              />
-            ))}
+            {properties
+              .filter((p) => !noMapOnly || (!p.lat && !p.lng))
+              .map((property) => (
+                <PropertyCard
+                  key={property.propertyId}
+                  property={property}
+                />
+              ))}
           </div>
         )}
 
@@ -449,10 +469,15 @@ function PropertyCard({ property }: PropertyCardProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all">
 
-      {/* 物件名 */}
-      <h3 className="text-lg font-semibold text-slate-800 mb-2 truncate">
-        {property.name}
-      </h3>
+      {/* 物件名 + マップ未登録バッジ */}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h3 className="text-lg font-semibold text-slate-800 truncate">{property.name}</h3>
+        {!property.lat && !property.lng && (
+          <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-full">
+            マップ未登録
+          </span>
+        )}
+      </div>
 
       {/* 住所 */}
       <p className="text-sm text-slate-600 mb-3 flex items-start">
@@ -582,6 +607,14 @@ function ArrowRightIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+    </svg>
+  );
+}
+
+function NoMapIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
     </svg>
   );
 }
