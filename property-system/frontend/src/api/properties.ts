@@ -277,3 +277,21 @@ export async function getPropertyFiles(propertyId: string): Promise<FilesRespons
   return handleResponse<FilesResponse>(response);
 }
 
+/**
+ * DELETE /properties/{propertyId}/files?key={s3Key} - 物件ファイル削除
+ */
+export async function deleteFile(
+  propertyId: string,
+  key: string
+): Promise<{ status: string; message: string }> {
+  const response = await fetch(
+    `${API_BASE_URL}/properties/${propertyId}/files?key=${encodeURIComponent(key)}`,
+    {
+      method: 'DELETE',
+      headers: getHeaders(),
+    }
+  );
+
+  return handleResponse(response);
+}
+

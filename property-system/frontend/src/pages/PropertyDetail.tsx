@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { getProperty, getUploadUrl, uploadFileToS3, getPropertyFiles, FileInfo } from '../api/properties';
+import { getProperty, getUploadUrl, uploadFileToS3, getPropertyFiles, deleteFile, FileInfo } from '../api/properties';
 import { Property } from '../types/property';
 
 // 1物件あたりの最大ファイル数（カテゴリごと）
@@ -198,6 +198,29 @@ export default function PropertyDetail() {
   };
 
   // ========================================
+  // ファイル削除
+  // ========================================
+  const handleFileDelete = useCallback(
+    async (file: FileInfo) => {
+      if (!propertyId) return;
+
+      const confirmed = window.confirm(
+        `「${file.name}」を削除しますか？\nこの操作は取り消せません。`
+      );
+      if (!confirmed) return;
+
+      try {
+        await deleteFile(propertyId, file.key);
+        // ファイル一覧を再取得
+        await fetchFiles();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'ファイルの削除に失敗しました');
+      }
+    },
+    [propertyId, fetchFiles]
+  );
+
+  // ========================================
   // イベントハンドラー
   // ========================================
   const handleEdit = () => {
@@ -319,6 +342,7 @@ export default function PropertyDetail() {
             activeFileTab={activeFileTab}
             setActiveFileTab={setActiveFileTab}
             onFileUpload={handleFileUpload}
+            onFileDelete={handleFileDelete}
             uploading={uploading}
             uploadProgress={uploadProgress}
             maxFilesPerCategory={MAX_FILES_PER_CATEGORY}
@@ -425,6 +449,7 @@ interface PropertyFilesTabProps {
   activeFileTab: FileType;
   setActiveFileTab: (tab: FileType) => void;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileDelete: (file: FileInfo) => void;
   uploading: boolean;
   uploadProgress: string | null;
   maxFilesPerCategory: number;
@@ -436,6 +461,7 @@ function PropertyFilesTab({
   activeFileTab,
   setActiveFileTab,
   onFileUpload,
+  onFileDelete,
   uploading,
   uploadProgress,
   maxFilesPerCategory,
@@ -538,6 +564,7 @@ function PropertyFilesTab({
                 key={file.key || index}
                 fileInfo={file}
                 fileType={activeFileTab}
+                onDelete={onFileDelete}
               />
             ))}
           </div>
@@ -553,11 +580,18 @@ function PropertyFilesTab({
 interface FileCardProps {
   fileInfo: FileInfo;
   fileType: FileType;
+  onDelete: (file: FileInfo) => void;
 }
 
-function FileCard({ fileInfo, fileType }: FileCardProps) {
+function FileCard({ fileInfo, fileType, onDelete }: FileCardProps) {
   const handleClick = () => {
     window.open(fileInfo.url, '_blank');
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    // カードのクリック（ファイルを開く）を発火させない
+    e.stopPropagation();
+    onDelete(fileInfo);
   };
 
   // ファイルサイズをフォーマット
@@ -574,7 +608,16 @@ function FileCard({ fileInfo, fileType }: FileCardProps) {
       className="group bg-slate-50 rounded-lg border border-slate-200 overflow-hidden cursor-pointer hover:border-blue-300 hover:shadow-md transition-all"
     >
       {/* サムネイル */}
-      <div className="aspect-square bg-slate-100 flex items-center justify-center">
+      <div className="relative aspect-square bg-slate-100 flex items-center justify-center">
+        {/* 削除ボタン */}
+        <button
+          type="button"
+          onClick={handleDelete}
+          title="削除"
+          className="absolute top-1.5 right-1.5 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/90 text-slate-500 shadow-sm opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white transition-all"
+        >
+          <TrashIcon className="w-4 h-4" />
+        </button>
         {fileType === 'photo' ? (
           <img
             src={fileInfo.url}
@@ -736,6 +779,14 @@ function FileIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
   );
 }

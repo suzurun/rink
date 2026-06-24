@@ -363,6 +363,7 @@ export class PropertySystemStack extends cdk.Stack {
     const deletePropertyLambda = createLambda('deleteProperty', 'deleteProperty/index.ts');
     const getUploadUrlLambda = createLambda('getUploadUrl', 'getUploadUrl/index.ts');
     const getFilesLambda = createLambda('getFiles', 'getFiles/index.ts');
+    const deleteFileLambda = createLambda('deleteFile', 'deleteFile/index.ts');
 
     // bulkUpload（長時間処理のため設定を上書き）
     const bulkUploadLambda = createLambda('bulkUpload', 'bulkUpload/index.ts', {
@@ -400,6 +401,7 @@ export class PropertySystemStack extends cdk.Stack {
       getUploadUrlLambda,
       bulkUploadLambda,
       getFilesLambda,
+      deleteFileLambda,
     ];
 
     // 権限付与（メインテーブル + S3）
@@ -503,6 +505,7 @@ export class PropertySystemStack extends cdk.Stack {
     // /properties/{propertyId}/files
     const filesResource = propertyResource.addResource('files');
     filesResource.addMethod('GET', new apigateway.LambdaIntegration(getFilesLambda), authOptions);
+    filesResource.addMethod('DELETE', new apigateway.LambdaIntegration(deleteFileLambda), authOptions);
 
     // /upload-url
     const uploadUrlResource = this.api.root.addResource('upload-url');
