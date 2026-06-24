@@ -24,7 +24,7 @@ export interface Property extends PropertyListItem {
   zipcode: string;
   landUse?: string;
   structure?: string;
-  area?: number;
+  area?: number | string;
   owner?: string;
   deliveryDate?: string;
   memo?: string;

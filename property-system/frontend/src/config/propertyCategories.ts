@@ -15,7 +15,9 @@ export const PROPERTY_CATEGORIES: PropertyCategoryDefinition[] = [
   { type: 'その他', color: '#6B7280', mediumOptions: ['その他'] },
   { type: '自社物件', color: '#6366F1', mediumOptions: ['自社物件'] },
   { type: '仲介物件', color: '#EC4899', mediumOptions: ['仲介物件'] },
+  { type: '土地', color: '#92400E', mediumOptions: ['リンク', 'RBS'] },
 ];
+
 
 
 

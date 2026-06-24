@@ -493,24 +493,8 @@ function validateRow(row: PropertyRow): string | null {
   if (!/^[A-Za-z0-9_-]+$/.test(row.propertyId)) {
     return 'propertyId contains invalid characters';
   }
-  if (!row.name) {
-    return 'name is required';
-  }
-  if (!row.zipcode) {
-    return 'zipcode is required';
-  }
-  if (!row.prefecture) {
-    return 'prefecture is required';
-  }
-  if (!row.city) {
-    return 'city is required';
-  }
-  if (!row.address) {
-    return 'address is required';
-  }
-  if (!row.typeLarge) {
-    return 'typeLarge is required';
-  }
+  // 物件名・市区町村・番地・大項目・郵便番号・都道府県はすべて任意
+  // （土地など項目が埋まらないデータも登録できるようにするため）
 
   // 緯度経度の範囲チェック
   if (row.lat !== undefined && (row.lat < -90 || row.lat > 90)) {

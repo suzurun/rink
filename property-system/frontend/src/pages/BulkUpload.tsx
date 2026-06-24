@@ -699,7 +699,7 @@ export default function BulkUpload() {
           <ul className="text-sm text-yellow-700 space-y-2">
             <li>• CSVファイルは<strong>UTF-8</strong>形式で保存してください</li>
             <li>• 1行目はヘッダー行として扱われます</li>
-            <li>• <strong>物件ID</strong>、<strong>物件名</strong>、<strong>郵便番号</strong>、<strong>都道府県</strong>、<strong>市区町村</strong>、<strong>番地</strong>、<strong>大項目</strong>は必須です</li>
+            <li>• 必須は<strong>物件ID</strong>のみです（物件名・大項目・住所などは任意）</li>
             <li>• 既存の物件IDと重複する場合はエラーになります</li>
             <li>• 一度に登録できるのは最大1,000件までです</li>
           </ul>

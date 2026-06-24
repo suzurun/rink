@@ -121,12 +121,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
 function validateInput(input: PropertyInput): string | null {
   if (!input.propertyId) return 'propertyId is required';
-  if (!input.name) return 'name is required';
-  if (!input.zipcode) return 'zipcode is required';
-  if (!input.prefecture) return 'prefecture is required';
-  if (!input.city) return 'city is required';
-  if (!input.address) return 'address is required';
-  if (!input.typeLarge) return 'typeLarge is required';
+  // 物件名・大項目・市区町村・番地・郵便番号・都道府県はすべて任意
+  // （土地など項目が埋まらないデータも登録できるようにするため）
   return null;
 }
 

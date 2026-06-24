@@ -190,7 +190,7 @@ export interface CreatePropertyInput {
   typeSmall?: string;
   landUse?: string;
   structure?: string;
-  area?: number;
+  area?: number | string;
   owner?: string;
   staff?: string;
   deliveryDate?: string;
