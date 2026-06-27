@@ -111,7 +111,7 @@ export default function PropertyTable() {
   const [categoryFilter, setCategoryFilter] = useState<string>('');
 
   // 表示中の列セット（土地のみ表示なら土地用8列、それ以外は全項目）
-  const activeColumns = categoryFilter === '土地' ? LAND_COLUMNS : COLUMNS;
+  const activeColumns = categoryFilter === '自社土地' ? LAND_COLUMNS : COLUMNS;
   const mainColCount = activeColumns.filter((c) => c.group === 'main').length;
   const optionalColCount = activeColumns.length - mainColCount;
   const firstOptionalKey = activeColumns.find((c) => c.group === 'optional')?.key;
@@ -375,7 +375,7 @@ export default function PropertyTable() {
         address: addr,
         lat: latNum != null && !isNaN(latNum) ? latNum : undefined,
         lng: lngNum != null && !isNaN(lngNum) ? lngNum : undefined,
-        typeLarge: '土地',
+        typeLarge: '自社土地',
         typeSmall: mng || undefined, // 管理番号
         staff: get(idx.staff) || undefined,
         area: areaStr || undefined, // 面積（坪付きのまま文字列で）
@@ -404,7 +404,7 @@ export default function PropertyTable() {
     setRows((prev) => [...parsed, ...prev]);
     setNewRowIds((s) => { const n = new Set(s); parsed.forEach((r) => n.add(r.propertyId)); return n; });
     setDirtyRows((d) => { const n = new Set(d); parsed.forEach((r) => n.add(r.propertyId)); return n; });
-    setCategoryFilter('土地');
+    setCategoryFilter('自社土地');
     setSortKey('');
     setSaveError(null);
   };
@@ -677,12 +677,12 @@ export default function PropertyTable() {
                   すべて
                 </button>
                 <button
-                  onClick={() => setCategoryFilter('土地')}
+                  onClick={() => setCategoryFilter('自社土地')}
                   className={`px-3 py-1.5 text-xs font-medium border-l border-slate-300 transition-colors ${
-                    categoryFilter === '土地' ? 'bg-amber-700 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                    categoryFilter === '自社土地' ? 'bg-amber-700 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  土地のみ
+                  自社土地のみ
                 </button>
               </div>
             </div>
