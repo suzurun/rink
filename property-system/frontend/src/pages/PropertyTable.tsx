@@ -9,7 +9,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getPropertiesForExport, updateProperty, createProperty } from '../api/properties';
+import { getPropertiesForExport, updateProperty, createProperty, deleteProperty } from '../api/properties';
 import { PROPERTY_CATEGORIES } from '../config/propertyCategories';
 
 const TYPE_LARGE_OPTIONS = PROPERTY_CATEGORIES.map((c) => c.type);
@@ -123,8 +123,12 @@ export default function PropertyTable() {
 
   const editInputRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
 
-  // セル選択（ペースト起点）
+  // セル選択（ペースト起点／範囲選択のアンカー）
   const [selectedCell, setSelectedCell] = useState<{ rowId: string; colKey: keyof PropertyRow } | null>(null);
+  // 範囲選択の終点（ドラッグ／Shift+クリックで移動）
+  const [selectionEnd, setSelectionEnd] = useState<{ rowId: string; colKey: keyof PropertyRow } | null>(null);
+  // ドラッグ選択中フラグ
+  const [isSelecting, setIsSelecting] = useState(false);
   const [pastedCells, setPastedCells] = useState<Set<CellKey>>(new Set());
 
   // データ取得
@@ -255,6 +259,19 @@ export default function PropertyTable() {
     }
   };
 
+  // 洗い替えで消えた自社土地をDBから削除（保存処理から共通で呼ぶ）
+  const flushPendingDeletes = async () => {
+    const delIds = Array.from(pendingDeleteIds);
+    for (const id of delIds) {
+      try {
+        await deleteProperty(id);
+        setPendingDeleteIds((s) => { const n = new Set(s); n.delete(id); return n; });
+      } catch (err) {
+        setSaveError(`削除に失敗しました（${id}）: ${err instanceof Error ? err.message : ''}`);
+      }
+    }
+  };
+
   // 全変更を保存
   const saveAll = async () => {
     setSaveError(null);
@@ -262,6 +279,20 @@ export default function PropertyTable() {
     for (const id of ids) {
       await saveRowAuto(id);
     }
+    // 洗い替え：画面から外した古い自社土地をDBからも削除
+    await flushPendingDeletes();
+  };
+
+  // 自社土地だけを保存（未保存の土地行を保存＋洗い替えで消えた土地を削除）
+  const saveLand = async () => {
+    setSaveError(null);
+    const landIds = Array.from(dirtyRows).filter(
+      (id) => rows.find((r) => r.propertyId === id)?.typeLarge === '自社土地'
+    );
+    for (const id of landIds) {
+      await saveRowAuto(id);
+    }
+    await flushPendingDeletes();
   };
 
   // 中項目の選択肢を取得
@@ -273,6 +304,9 @@ export default function PropertyTable() {
 
   // 新規行の仮IDセット
   const [newRowIds, setNewRowIds] = useState<Set<string>>(new Set());
+
+  // 洗い替えで削除予定のDB既存ID（自社土地の置き換え時に蓄積し、保存時にDELETE）
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set());
 
   // 次の物件IDを自動生成
   const generateNextId = (): string => {
@@ -399,11 +433,52 @@ export default function PropertyTable() {
     });
   };
 
-  // 解析済みの行をテーブルに追加（共通処理）
+  // 解析済みの行をテーブルに反映（既存の自社土地を洗い替え or 追加）
   const importParsedLand = (parsed: PropertyRow[]) => {
-    setRows((prev) => [...parsed, ...prev]);
-    setNewRowIds((s) => { const n = new Set(s); parsed.forEach((r) => n.add(r.propertyId)); return n; });
-    setDirtyRows((d) => { const n = new Set(d); parsed.forEach((r) => n.add(r.propertyId)); return n; });
+    const existingLand = rows.filter((r) => r.typeLarge === '自社土地');
+
+    // 既存の自社土地がある場合は「置き換え（洗い替え）」か「追加」かを確認
+    // OK＝今回の取込分だけにする（既存はDBからも削除） / キャンセル＝従来どおり追加
+    const replace =
+      existingLand.length === 0 ||
+      window.confirm(
+        `既存の自社土地 ${existingLand.length} 件を、取り込む ${parsed.length} 件で置き換えますか？\n\n` +
+          `［OK］今回取り込む ${parsed.length} 件だけにする（既存の自社土地は保存時に削除されます）\n` +
+          `［キャンセル］既存を残して追加する`
+      );
+
+    if (replace) {
+      // DB由来（新規行でない）の既存土地IDは、保存時にDBから削除する
+      const removedDbIds = existingLand
+        .filter((r) => !newRowIds.has(r.propertyId))
+        .map((r) => r.propertyId);
+
+      // 画面からは既存の自社土地を全て外し、取り込んだ行だけを先頭に置く
+      setRows((prev) => [...parsed, ...prev.filter((r) => r.typeLarge !== '自社土地')]);
+      setNewRowIds((s) => {
+        const n = new Set(s);
+        existingLand.forEach((r) => n.delete(r.propertyId)); // 画面から消える古い土地行
+        parsed.forEach((r) => n.add(r.propertyId));
+        return n;
+      });
+      setDirtyRows((d) => {
+        const n = new Set(d);
+        existingLand.forEach((r) => n.delete(r.propertyId));
+        parsed.forEach((r) => n.add(r.propertyId));
+        return n;
+      });
+      setPendingDeleteIds((s) => {
+        const n = new Set(s);
+        removedDbIds.forEach((id) => n.add(id));
+        return n;
+      });
+    } else {
+      // 従来どおり既存を残して先頭に追加
+      setRows((prev) => [...parsed, ...prev]);
+      setNewRowIds((s) => { const n = new Set(s); parsed.forEach((r) => n.add(r.propertyId)); return n; });
+      setDirtyRows((d) => { const n = new Set(d); parsed.forEach((r) => n.add(r.propertyId)); return n; });
+    }
+
     setCategoryFilter('自社土地');
     setSortKey('');
     setSaveError(null);
@@ -514,6 +589,149 @@ export default function PropertyTable() {
     if (!categoryFilter) return sortedRows;
     return sortedRows.filter((r) => r.typeLarge === categoryFilter);
   }, [sortedRows, categoryFilter]);
+
+  // 自社土地の未保存件数（土地専用保存ボタンの活性判定用）
+  const landDirtyCount = useMemo(
+    () => Array.from(dirtyRows).filter((id) => rows.find((r) => r.propertyId === id)?.typeLarge === '自社土地').length,
+    [dirtyRows, rows]
+  );
+
+  // 選択範囲（Excel風の矩形選択）に含まれるセルキー集合
+  const selectedRangeKeys = useMemo(() => {
+    const keys = new Set<CellKey>();
+    if (!selectedCell) return keys;
+    const end = selectionEnd || selectedCell;
+    const rowA = visibleRows.findIndex((r) => r.propertyId === selectedCell.rowId);
+    const rowB = visibleRows.findIndex((r) => r.propertyId === end.rowId);
+    const colA = activeColumns.findIndex((c) => c.key === selectedCell.colKey);
+    const colB = activeColumns.findIndex((c) => c.key === end.colKey);
+    if (rowA < 0 || rowB < 0 || colA < 0 || colB < 0) return keys;
+    const r0 = Math.min(rowA, rowB), r1 = Math.max(rowA, rowB);
+    const c0 = Math.min(colA, colB), c1 = Math.max(colA, colB);
+    for (let ri = r0; ri <= r1; ri++) {
+      for (let ci = c0; ci <= c1; ci++) {
+        keys.add(`${visibleRows[ri].propertyId}-${activeColumns[ci].key}`);
+      }
+    }
+    return keys;
+  }, [selectedCell, selectionEnd, visibleRows, activeColumns]);
+
+  // 選択範囲に含まれる行ID（行削除ボタンの対象）
+  const selectedRowIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!selectedCell) return ids;
+    const end = selectionEnd || selectedCell;
+    const rowA = visibleRows.findIndex((r) => r.propertyId === selectedCell.rowId);
+    const rowB = visibleRows.findIndex((r) => r.propertyId === end.rowId);
+    if (rowA < 0 || rowB < 0) return ids;
+    const r0 = Math.min(rowA, rowB), r1 = Math.max(rowA, rowB);
+    for (let ri = r0; ri <= r1; ri++) ids.add(visibleRows[ri].propertyId);
+    return ids;
+  }, [selectedCell, selectionEnd, visibleRows]);
+
+  // 選択範囲のセルを空にする（編集可能セルのみ）
+  const clearSelectedCells = useCallback(() => {
+    if (selectedRangeKeys.size === 0) return;
+    const affected = new Set<string>();
+    setRows((prev) =>
+      prev.map((r) => {
+        let nr: PropertyRow = r;
+        for (const col of activeColumns) {
+          if (!col.editable) continue; // 物件IDなど編集不可セルは消さない
+          if (!selectedRangeKeys.has(`${r.propertyId}-${col.key}`)) continue;
+          const cur = r[col.key];
+          if (cur === undefined || cur === null || cur === '') continue; // 既に空
+          if (nr === r) nr = { ...r };
+          (nr as any)[col.key] = '';
+          if (col.key === 'typeLarge') (nr as any).typeMedium = ''; // 大項目を消したら中項目も
+        }
+        if (nr !== r) affected.add(r.propertyId);
+        return nr;
+      })
+    );
+    if (affected.size > 0) {
+      setDirtyRows((d) => { const n = new Set(d); affected.forEach((id) => n.add(id)); return n; });
+      setSavedRows((s) => { const n = new Set(s); affected.forEach((id) => n.delete(id)); return n; });
+    }
+  }, [selectedRangeKeys, activeColumns]);
+
+  // Delete / Backspace で選択範囲を一括クリア
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (editingCell) return; // セル編集中は通常入力を優先
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const tag = (document.activeElement?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return; // 入力欄内は対象外
+      if (selectedRangeKeys.size === 0) return;
+      e.preventDefault();
+      clearSelectedCells();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [editingCell, selectedRangeKeys, clearSelectedCells]);
+
+  // ドラッグ終了でセル選択を確定
+  useEffect(() => {
+    const onUp = () => setIsSelecting(false);
+    document.addEventListener('mouseup', onUp);
+    return () => document.removeEventListener('mouseup', onUp);
+  }, []);
+
+  // 列まるごと選択（列見出しクリック）
+  const selectColumn = (colKey: keyof PropertyRow) => {
+    if (visibleRows.length === 0) return;
+    setIsSelecting(false);
+    setSelectedCell({ rowId: visibleRows[0].propertyId, colKey });
+    setSelectionEnd({ rowId: visibleRows[visibleRows.length - 1].propertyId, colKey });
+  };
+
+  // 行まるごと選択（行番号クリック）
+  const selectRow = (rowId: string) => {
+    setIsSelecting(false);
+    setSelectedCell({ rowId, colKey: activeColumns[0].key });
+    setSelectionEnd({ rowId, colKey: activeColumns[activeColumns.length - 1].key });
+  };
+
+  // 全セル選択（左上コーナークリック）
+  const selectAllCells = () => {
+    if (visibleRows.length === 0) return;
+    setIsSelecting(false);
+    setSelectedCell({ rowId: visibleRows[0].propertyId, colKey: activeColumns[0].key });
+    setSelectionEnd({
+      rowId: visibleRows[visibleRows.length - 1].propertyId,
+      colKey: activeColumns[activeColumns.length - 1].key,
+    });
+  };
+
+  // 指定した行ID群を「行ごと」削除（画面から外し、DB既存は保存時にDELETE）
+  const removeRows = (ids: string[]) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const dbIds = ids.filter((id) => !newRowIds.has(id)); // 新規行はDBに無いので削除対象外
+    setRows((prev) => prev.filter((r) => !idSet.has(r.propertyId)));
+    setPendingDeleteIds((s) => { const n = new Set(s); dbIds.forEach((id) => n.add(id)); return n; });
+    setNewRowIds((s) => { const n = new Set(s); ids.forEach((id) => n.delete(id)); return n; });
+    setDirtyRows((d) => { const n = new Set(d); ids.forEach((id) => n.delete(id)); return n; });
+    setSavedRows((s) => { const n = new Set(s); ids.forEach((id) => n.delete(id)); return n; });
+    setSelectedCell(null);
+    setSelectionEnd(null);
+  };
+
+  // 選択中の行を削除
+  const deleteSelectedRows = () => {
+    const ids = Array.from(selectedRowIds);
+    if (ids.length === 0) return;
+    if (!window.confirm(`選択した ${ids.length} 行を削除します。\n保存すると元に戻せません。よろしいですか？`)) return;
+    removeRows(ids);
+  };
+
+  // 自社土地をすべて削除
+  const deleteAllLand = () => {
+    const landIds = rows.filter((r) => r.typeLarge === '自社土地').map((r) => r.propertyId);
+    if (landIds.length === 0) return;
+    if (!window.confirm(`自社土地 ${landIds.length} 件をすべて削除します。\n保存すると元に戻せません。よろしいですか？`)) return;
+    removeRows(landIds);
+  };
 
   // Excelからのペースト処理
   useEffect(() => {
@@ -688,9 +906,10 @@ export default function PropertyTable() {
             </div>
 
             <div className="flex items-center gap-2">
-              {dirtyRows.size > 0 && (
+              {(dirtyRows.size > 0 || pendingDeleteIds.size > 0) && (
                 <span className="text-xs text-amber-600 font-medium">
                   {dirtyRows.size} 件の未保存の変更
+                  {pendingDeleteIds.size > 0 && `（削除 ${pendingDeleteIds.size} 件）`}
                 </span>
               )}
               <button
@@ -707,9 +926,38 @@ export default function PropertyTable() {
                 <PlusIcon className="w-4 h-4 mr-1.5" />
                 新規追加
               </button>
+              {selectedRowIds.size > 0 && (
+                <button
+                  onClick={deleteSelectedRows}
+                  className="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  <TrashIcon className="w-4 h-4 mr-1.5" />
+                  選択行を削除（{selectedRowIds.size}）
+                </button>
+              )}
+              {categoryFilter === '自社土地' && (
+                <button
+                  onClick={deleteAllLand}
+                  className="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  <TrashIcon className="w-4 h-4 mr-1.5" />
+                  自社土地を全削除
+                </button>
+              )}
+              {categoryFilter === '自社土地' && (
+                <button
+                  onClick={saveLand}
+                  disabled={landDirtyCount === 0 && pendingDeleteIds.size === 0}
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-amber-700 rounded-lg hover:bg-amber-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <SaveIcon className="w-4 h-4 mr-1.5" />
+                  自社土地を保存
+                  {pendingDeleteIds.size > 0 ? `（削除 ${pendingDeleteIds.size}）` : ''}
+                </button>
+              )}
               <button
                 onClick={saveAll}
-                disabled={dirtyRows.size === 0}
+                disabled={dirtyRows.size === 0 && pendingDeleteIds.size === 0}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <SaveIcon className="w-4 h-4 mr-1.5" />
@@ -753,7 +1001,7 @@ export default function PropertyTable() {
         <>
           {/* 直接貼り付けの案内 */}
           <div className="px-4 py-1.5 bg-amber-50 border-b border-amber-200 text-xs text-amber-800 flex-shrink-0">
-            💡 Excelの土地データを「見出し行ごと」コピーして、この画面で <strong>⌘V</strong> すると、自動で土地として取り込まれます（マス選択不要）。
+            💡 Excelの土地データを「見出し行ごと」コピーして、この画面で <strong>⌘V</strong> すると、自動で土地として取り込まれます（マス選択不要）。／<strong>列見出しクリック＝列選択</strong>・<strong>行番号クリック＝行選択</strong>・ドラッグで範囲選択 → <strong>Delete</strong>で中身をクリア。行番号で行を選んで<strong>「選択行を削除」</strong>ボタンなら行ごと削除できます（並び替えは見出しの▲▼ボタン）。
           </div>
           <div className="flex-1 overflow-auto">
           <table className="border-collapse text-sm">
@@ -762,6 +1010,7 @@ export default function PropertyTable() {
               {/* グループ見出し行（任意項目があるときだけ表示） */}
               {hasOptionalGroup && (
               <tr className="border-b border-slate-300">
+                <th className="bg-slate-100 border-r border-slate-300" />
                 <th
                   colSpan={mainColCount}
                   className="bg-blue-50 border-r-4 border-slate-400 px-2 py-1.5 text-center text-xs font-bold text-blue-800"
@@ -778,6 +1027,14 @@ export default function PropertyTable() {
               )}
               {/* 列名行 */}
               <tr className="bg-slate-100 border-b border-slate-300">
+                {/* 左上コーナー（クリックで全セル選択） */}
+                <th
+                  onClick={selectAllCells}
+                  title="クリックで全セルを選択（Deleteで一括クリア）"
+                  className="w-10 px-1 py-2 text-center text-[11px] font-semibold text-slate-400 bg-slate-100 border-r border-slate-300 cursor-pointer hover:bg-slate-200 select-none"
+                >
+                  ⌗
+                </th>
                 {activeColumns.map((col) => (
                   <th
                     key={col.key}
@@ -791,15 +1048,24 @@ export default function PropertyTable() {
                         : 'border-r border-slate-300'
                     }`}
                     style={{ minWidth: col.width, width: col.width }}
-                    onClick={() => handleSort(col.key)}
+                    onClick={() => selectColumn(col.key)}
+                    title="クリックで列を選択（Deleteで列をまとめて消去）"
                   >
                     <span className="inline-flex items-center gap-1">
                       {col.label}
-                      {sortKey === col.key ? (
-                        <span className="text-blue-600">{sortDir === 'asc' ? '▲' : '▼'}</span>
-                      ) : (
-                        <span className="text-slate-300">⇅</span>
-                      )}
+                      {/* 並び替えは矢印ボタンで（列選択と分離） */}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleSort(col.key); }}
+                        title="並び替え"
+                        className="px-0.5 rounded hover:bg-slate-300/60"
+                      >
+                        {sortKey === col.key ? (
+                          <span className="text-blue-600">{sortDir === 'asc' ? '▲' : '▼'}</span>
+                        ) : (
+                          <span className="text-slate-300">⇅</span>
+                        )}
+                      </button>
                     </span>
                   </th>
                 ))}
@@ -819,6 +1085,14 @@ export default function PropertyTable() {
                       isNew ? 'bg-green-50' : isDirty ? 'bg-amber-50' : isSaved ? 'bg-green-50/50' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
                     } hover:bg-blue-50/40 transition-colors`}
                   >
+                    {/* 行番号（クリックで行を選択→Deleteで行をまとめて消去） */}
+                    <td
+                      onClick={() => selectRow(row.propertyId)}
+                      title="クリックで行を選択（Deleteで行をまとめて消去）"
+                      className="w-10 px-1 py-0.5 text-center text-[11px] text-slate-400 bg-slate-100 border-r border-slate-300 cursor-pointer hover:bg-slate-200 select-none"
+                    >
+                      {idx + 1}
+                    </td>
                     {/* データセル */}
                     {activeColumns.map((col) => {
                       const cellKey: CellKey = `${row.propertyId}-${col.key}`;
@@ -842,11 +1116,28 @@ export default function PropertyTable() {
                           } ${
                             pastedCells.has(`${row.propertyId}-${col.key}`) ? 'ring-2 ring-inset ring-green-400 bg-green-100' : ''
                           } ${
-                            selectedCell?.rowId === row.propertyId && selectedCell?.colKey === col.key && !editingCell ? 'ring-2 ring-inset ring-blue-500' : ''
+                            !editingCell && selectedRangeKeys.has(`${row.propertyId}-${col.key}`)
+                              ? (selectedCell?.rowId === row.propertyId && selectedCell?.colKey === col.key
+                                  ? 'ring-2 ring-inset ring-blue-500 bg-blue-100'
+                                  : 'ring-1 ring-inset ring-blue-300 bg-blue-100/70')
+                              : ''
                           }`}
                           style={{ minWidth: col.width, width: col.width, maxWidth: col.width + 60 }}
-                          onClick={() => {
-                            if (canEdit) setSelectedCell({ rowId: row.propertyId, colKey: col.key });
+                          onMouseDown={(e) => {
+                            if (editingCell) return;
+                            if (e.button !== 0) return; // 左クリックのみ
+                            e.preventDefault(); // テキスト選択を抑止
+                            if (e.shiftKey && selectedCell) {
+                              // Shift+クリックでアンカーから範囲拡張
+                              setSelectionEnd({ rowId: row.propertyId, colKey: col.key });
+                            } else {
+                              setSelectedCell({ rowId: row.propertyId, colKey: col.key });
+                              setSelectionEnd({ rowId: row.propertyId, colKey: col.key });
+                              setIsSelecting(true);
+                            }
+                          }}
+                          onMouseEnter={() => {
+                            if (isSelecting) setSelectionEnd({ rowId: row.propertyId, colKey: col.key });
                           }}
                           onDoubleClick={() => {
                             if (canEdit) startEdit(row.propertyId, col.key, row[col.key]);
@@ -897,6 +1188,7 @@ export default function PropertyTable() {
               {visibleRows.length === 0 &&
                 Array.from({ length: 20 }).map((_, ri) => (
                   <tr key={`placeholder-${ri}`} className={`border-b border-slate-200 ${ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                    <td className="w-10 px-1 py-0.5 bg-slate-100 border-r border-slate-300" />
                     {activeColumns.map((col) => (
                       <td
                         key={col.key}
@@ -988,6 +1280,14 @@ function SaveIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
   );
 }
