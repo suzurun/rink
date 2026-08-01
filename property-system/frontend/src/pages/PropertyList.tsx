@@ -181,6 +181,14 @@ export default function PropertyList() {
                 <MapIcon className="w-4 h-4 mr-2" />
                 地図で表示
               </button>
+              {/* テーブル閲覧（スマホのみ・閲覧専用） */}
+              <button
+                onClick={() => { window.location.href = '/properties/table?view=1'; }}
+                className="md:hidden inline-flex items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                <TableIcon className="w-4 h-4 mr-1.5" />
+                土地・表を見る
+              </button>
               {/* テーブル編集（PCのみ） */}
               <button
                 onClick={() => { window.location.href = '/properties/table'; }}

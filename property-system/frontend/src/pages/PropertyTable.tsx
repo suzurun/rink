@@ -95,6 +95,13 @@ export default function PropertyTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 閲覧専用モード（スマホからは ?view=1 で開き、編集操作を一切無効化する）
+  const [readOnly, setReadOnly] = useState(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setReadOnly(params.get('view') === '1');
+  }, []);
+
   // 編集状態
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -155,6 +162,7 @@ export default function PropertyTable() {
 
   // セル編集開始
   const startEdit = (rowId: string, colKey: string, currentValue: any) => {
+    if (readOnly) return; // 閲覧専用モードでは編集不可
     const key: CellKey = `${rowId}-${colKey}`;
     setEditingCell(key);
     setEditValue(currentValue != null ? String(currentValue) : '');
@@ -326,6 +334,7 @@ export default function PropertyTable() {
 
   // 新規行を追加
   const addNewRow = () => {
+    if (readOnly) return; // 閲覧専用モードでは追加不可
     const nextId = generateNextId();
     const newRow: PropertyRow = {
       propertyId: nextId,
@@ -658,6 +667,7 @@ export default function PropertyTable() {
   // Delete / Backspace で選択範囲を一括クリア
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (readOnly) return; // 閲覧専用モードでは一括クリア不可
       if (editingCell) return; // セル編集中は通常入力を優先
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       const tag = (document.activeElement?.tagName || '').toLowerCase();
@@ -668,7 +678,7 @@ export default function PropertyTable() {
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [editingCell, selectedRangeKeys, clearSelectedCells]);
+  }, [readOnly, editingCell, selectedRangeKeys, clearSelectedCells]);
 
   // ドラッグ終了でセル選択を確定
   useEffect(() => {
@@ -719,6 +729,7 @@ export default function PropertyTable() {
 
   // 選択中の行を削除
   const deleteSelectedRows = () => {
+    if (readOnly) return; // 閲覧専用モードでは削除不可
     const ids = Array.from(selectedRowIds);
     if (ids.length === 0) return;
     if (!window.confirm(`選択した ${ids.length} 行を削除します。\n保存すると元に戻せません。よろしいですか？`)) return;
@@ -727,6 +738,7 @@ export default function PropertyTable() {
 
   // 自社土地をすべて削除
   const deleteAllLand = () => {
+    if (readOnly) return; // 閲覧専用モードでは削除不可
     const landIds = rows.filter((r) => r.typeLarge === '自社土地').map((r) => r.propertyId);
     if (landIds.length === 0) return;
     if (!window.confirm(`自社土地 ${landIds.length} 件をすべて削除します。\n保存すると元に戻せません。よろしいですか？`)) return;
@@ -736,6 +748,7 @@ export default function PropertyTable() {
   // Excelからのペースト処理
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
+      if (readOnly) return; // 閲覧専用モードでは取込不可
       if (editingCell) return;
 
       const text = e.clipboardData?.getData('text/plain');
@@ -855,7 +868,7 @@ export default function PropertyTable() {
 
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [selectedCell, editingCell, visibleRows, categoryFilter, rows]);
+  }, [readOnly, selectedCell, editingCell, visibleRows, categoryFilter, rows]);
 
   // セル値の表示
   const getCellDisplay = (row: PropertyRow, col: ColumnDef): string => {
@@ -879,7 +892,9 @@ export default function PropertyTable() {
               >
                 <BackIcon className="w-5 h-5" />
               </button>
-              <h1 className="text-lg font-bold text-slate-800">テーブル編集</h1>
+              <h1 className="text-lg font-bold text-slate-800">
+                {readOnly ? 'テーブル（閲覧のみ）' : 'テーブル編集'}
+              </h1>
               <span className="text-xs text-slate-500">
                 {categoryFilter ? `${categoryFilter} ${visibleRows.length} 件` : `${rows.length} 件`}
               </span>
@@ -905,6 +920,11 @@ export default function PropertyTable() {
               </div>
             </div>
 
+            {readOnly ? (
+              <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-slate-500 bg-slate-100 rounded-lg">
+                閲覧のみ（編集はPCから）
+              </span>
+            ) : (
             <div className="flex items-center gap-2">
               {(dirtyRows.size > 0 || pendingDeleteIds.size > 0) && (
                 <span className="text-xs text-amber-600 font-medium">
@@ -964,6 +984,7 @@ export default function PropertyTable() {
                 すべて保存
               </button>
             </div>
+            )}
           </div>
         </div>
       </header>
@@ -999,10 +1020,12 @@ export default function PropertyTable() {
       {/* テーブル */}
       {!loading && !error && (
         <>
-          {/* 直接貼り付けの案内 */}
+          {/* 直接貼り付けの案内（閲覧専用モードでは非表示） */}
+          {!readOnly && (
           <div className="px-4 py-1.5 bg-amber-50 border-b border-amber-200 text-xs text-amber-800 flex-shrink-0">
             💡 Excelの土地データを「見出し行ごと」コピーして、この画面で <strong>⌘V</strong> すると、自動で土地として取り込まれます（マス選択不要）。／<strong>列見出しクリック＝列選択</strong>・<strong>行番号クリック＝行選択</strong>・ドラッグで範囲選択 → <strong>Delete</strong>で中身をクリア。行番号で行を選んで<strong>「選択行を削除」</strong>ボタンなら行ごと削除できます（並び替えは見出しの▲▼ボタン）。
           </div>
+          )}
           <div className="flex-1 overflow-auto">
           <table className="border-collapse text-sm">
             {/* ヘッダー */}
@@ -1112,7 +1135,7 @@ export default function PropertyTable() {
                           className={`px-1 py-0.5 ${
                             col.key === firstOptionalKey ? 'border-l-4 border-l-slate-300 border-r border-r-slate-200' : 'border-r border-slate-200'
                           } ${
-                            canEdit ? 'cursor-cell' : 'cursor-default bg-slate-50/50'
+                            canEdit && !readOnly ? 'cursor-cell' : 'cursor-default bg-slate-50/50'
                           } ${
                             pastedCells.has(`${row.propertyId}-${col.key}`) ? 'ring-2 ring-inset ring-green-400 bg-green-100' : ''
                           } ${
