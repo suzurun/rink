@@ -2,18 +2,20 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { isAuthenticated } from '../api/auth';
 
 export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // 認証チェック後、物件一覧へリダイレクト
-    const token = localStorage.getItem('idToken');
-    if (token) {
-      router.push('/properties');
-    } else {
-      router.push('/login');
-    }
+    // 保存済みトークンではなく Amplify のセッションで判定する。
+    // トークンの期限が切れていても、リフレッシュトークンが有効なら
+    // 自動で更新されるためログイン画面に戻されない。
+    const checkAuth = async () => {
+      const authenticated = await isAuthenticated();
+      router.push(authenticated ? '/properties' : '/login');
+    };
+    checkAuth();
   }, [router]);
 
   return (
@@ -25,9 +27,3 @@ export default function Home() {
     </div>
   );
 }
-
-
-
-
-
-

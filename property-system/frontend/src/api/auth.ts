@@ -13,6 +13,8 @@
  */
 
 import { Amplify } from 'aws-amplify';
+import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito';
+import { defaultStorage, sessionStorage as amplifySessionStorage } from 'aws-amplify/utils';
 import {
   signIn,
   signOut,
@@ -35,13 +37,65 @@ const REGION = process.env.NEXT_PUBLIC_COGNITO_REGION || 'ap-northeast-1';
 const USER_POOL_ID = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || '';
 const USER_POOL_CLIENT_ID = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID || '';
 
+// ========================================
+// ログイン状態の保持設定
+// ========================================
+
+/**
+ * 「ログイン状態を保持する」の設定キー。
+ * この値自体は機密ではないため常に localStorage に置く。
+ */
+const REMEMBER_LOGIN_KEY = 'rememberLogin';
+
+/**
+ * ログイン状態を保持するかどうか（既定: 保持する）
+ *
+ * - true  : localStorage に保存 → ブラウザを閉じても継続（最長30日）
+ * - false : sessionStorage に保存 → タブ/ブラウザを閉じるとログアウト
+ */
+export function getRememberLogin(): boolean {
+  if (typeof window === 'undefined') return true;
+  return window.localStorage.getItem(REMEMBER_LOGIN_KEY) !== 'false';
+}
+
+/**
+ * ログイン状態を保持するかを設定する。
+ * ログイン実行前に呼ぶこと（トークンの保存先が切り替わるため）。
+ */
+export function setRememberLogin(remember: boolean): void {
+  if (typeof window === 'undefined') return;
+
+  window.localStorage.setItem(REMEMBER_LOGIN_KEY, remember ? 'true' : 'false');
+
+  // 切り替え前の保存先に残ったトークンを消してから保存先を変更する
+  clearTokensFromStorage();
+  applyTokenStorage();
+}
+
+/**
+ * Amplify のトークン保存先を設定に合わせて切り替える
+ */
+function applyTokenStorage(): void {
+  cognitoUserPoolsTokenProvider.setKeyValueStorage(
+    getRememberLogin() ? defaultStorage : amplifySessionStorage
+  );
+}
+
+/**
+ * 自前で保持するトークンの保存先（Amplify と同じ場所を使う）
+ */
+function tokenStore(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  return getRememberLogin() ? window.localStorage : window.sessionStorage;
+}
+
 // Amplify の初期化（クライアントサイドでのみ実行）
 let isConfigured = false;
 
 function ensureAmplifyConfigured() {
   if (isConfigured) return;
   if (typeof window === 'undefined') return; // SSR時はスキップ
-  
+
   Amplify.configure({
     Auth: {
       Cognito: {
@@ -53,6 +107,10 @@ function ensureAmplifyConfigured() {
       },
     },
   });
+
+  // トークンの保存先を「ログイン状態を保持する」設定に合わせる
+  applyTokenStorage();
+
   isConfigured = true;
 }
 
@@ -105,7 +163,7 @@ export async function login(email: string, password: string): Promise<AuthResult
 
     // ログイン成功
     if (result.isSignedIn) {
-      // トークンを localStorage に保存
+      // トークンを保存（保持設定に応じて local / session）
       await saveTokensToStorage();
 
       return {
@@ -190,7 +248,7 @@ export async function logout(): Promise<void> {
   } catch (error) {
     console.error('Logout error:', error);
   } finally {
-    // localStorage からトークンを削除
+    // 保存済みトークンを削除
     clearTokensFromStorage();
   }
 }
@@ -307,21 +365,23 @@ export async function isExternal(): Promise<boolean> {
 // ========================================
 
 /**
- * トークンを localStorage に保存
+ * トークンを保存（保持設定に応じて local / session）
  */
 async function saveTokensToStorage(): Promise<void> {
   try {
     const session = await fetchAuthSession();
+    const store = tokenStore();
+    if (!store) return;
 
     if (session.tokens) {
       const idToken = session.tokens.idToken?.toString();
       const accessToken = session.tokens.accessToken?.toString();
 
       if (idToken) {
-        localStorage.setItem('idToken', idToken);
+        store.setItem('idToken', idToken);
       }
       if (accessToken) {
-        localStorage.setItem('accessToken', accessToken);
+        store.setItem('accessToken', accessToken);
       }
     }
   } catch (error) {
@@ -330,20 +390,31 @@ async function saveTokensToStorage(): Promise<void> {
 }
 
 /**
- * localStorage からトークンを削除
+ * 保存済みトークンを削除する（API 側の 401 後始末からも使う）
  */
-function clearTokensFromStorage(): void {
-  localStorage.removeItem('idToken');
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
+export function clearRememberedSession(): void {
+  clearTokensFromStorage();
 }
 
 /**
- * localStorage から ID トークンを取得
+ * 保存済みトークンを削除
+ */
+function clearTokensFromStorage(): void {
+  if (typeof window === 'undefined') return;
+
+  // 保存先が切り替わっていても消し残しが出ないよう両方を掃除する
+  for (const store of [window.localStorage, window.sessionStorage]) {
+    store.removeItem('idToken');
+    store.removeItem('accessToken');
+    store.removeItem('refreshToken');
+  }
+}
+
+/**
+ * 保存済みの ID トークンを取得
  */
 export function getIdToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('idToken');
+  return tokenStore()?.getItem('idToken') || null;
 }
 
 /**
@@ -357,10 +428,11 @@ export async function getFreshIdToken(): Promise<string | null> {
     
     if (session.tokens?.idToken) {
       const idToken = session.tokens.idToken.toString();
-      // localStorageも更新
-      localStorage.setItem('idToken', idToken);
+      // 保存済みトークンも更新
+      const store = tokenStore();
+      store?.setItem('idToken', idToken);
       if (session.tokens.accessToken) {
-        localStorage.setItem('accessToken', session.tokens.accessToken.toString());
+        store?.setItem('accessToken', session.tokens.accessToken.toString());
       }
       return idToken;
     }
@@ -373,9 +445,10 @@ export async function getFreshIdToken(): Promise<string | null> {
       const session = await fetchAuthSession({ forceRefresh: true });
       if (session.tokens?.idToken) {
         const idToken = session.tokens.idToken.toString();
-        localStorage.setItem('idToken', idToken);
+        const store = tokenStore();
+        store?.setItem('idToken', idToken);
         if (session.tokens.accessToken) {
-          localStorage.setItem('accessToken', session.tokens.accessToken.toString());
+          store?.setItem('accessToken', session.tokens.accessToken.toString());
         }
         return idToken;
       }
@@ -387,11 +460,10 @@ export async function getFreshIdToken(): Promise<string | null> {
 }
 
 /**
- * localStorage からアクセストークンを取得
+ * 保存済みのアクセストークンを取得
  */
 export function getAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('accessToken');
+  return tokenStore()?.getItem('accessToken') || null;
 }
 
 /**

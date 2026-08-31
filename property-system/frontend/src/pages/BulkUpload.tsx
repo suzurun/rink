@@ -14,7 +14,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getIdToken } from '../api/auth';
+import { getFreshIdToken } from '../api/auth';
 import { getPropertiesForExport } from '../api/properties';
 
 // API ベース URL
@@ -174,7 +174,7 @@ export default function BulkUpload() {
     setResult(null);
 
     try {
-      const token = getIdToken();
+      const token = await getFreshIdToken();
 
       // CSVファイルの内容を読み取ってJSON形式で送信
       const csvContent = await new Promise<string>((resolve, reject) => {

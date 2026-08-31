@@ -45,6 +45,14 @@ const dynamoClient = new DynamoDBClient({});
 const s3Client = new S3Client({});
 
 import { resolveTableName } from '../shared/tenantResolver';
+import {
+  Actor,
+  getActor,
+  systemActor,
+  historyTableFromPropertiesTable,
+  recordHistoryBatch,
+  HistoryRecordInput,
+} from '../shared/auditLog';
 
 const DEFAULT_TABLE_NAME = process.env.TABLE_NAME || 'Properties';
 const BUCKET_NAME = process.env.BUCKET_NAME || '';
@@ -136,7 +144,7 @@ async function handleS3Trigger(event: S3Event, tableName: string): Promise<void>
 
     const csvContent = await getS3FileContent(bucket, key);
     const rows = parseCSV(csvContent);
-    const result = await processRows(rows, tableName);
+    const result = await processRows(rows, tableName, systemActor());
 
     console.log(`Bulk upload result: ${result.successCount} success, ${result.errorCount} errors`);
 
@@ -198,7 +206,7 @@ async function handleApiGateway(
   // ========================================
   // 4. 一括登録実行
   // ========================================
-  const result = await processRows(rows, TABLE_NAME);
+  const result = await processRows(rows, TABLE_NAME, getActor(event));
 
   // ========================================
   // 5. レスポンス
@@ -375,7 +383,11 @@ function mapJapaneseHeader(header: string): string | null {
 /**
  * 行データの処理
  */
-async function processRows(rows: PropertyRow[], tableName: string): Promise<{
+async function processRows(
+  rows: PropertyRow[],
+  tableName: string,
+  actor: Actor
+): Promise<{
   successCount: number;
   errorCount: number;
   errorFileUrl?: string;
@@ -384,6 +396,8 @@ async function processRows(rows: PropertyRow[], tableName: string): Promise<{
   const errors: ErrorRow[] = [];
   let successCount = 0;
   const now = new Date().toISOString();
+  const historyTableName = historyTableFromPropertiesTable(tableName);
+  const historyEntries: HistoryRecordInput[] = [];
 
   // 既存の propertyId をチェックするためのセット
   const processedIds = new Set<string>();
@@ -447,6 +461,13 @@ async function processRows(rows: PropertyRow[], tableName: string): Promise<{
         },
         createdAt: now,
         updatedAt: now,
+        // 更新者表示・操作履歴用
+        createdBy: actor.userName,
+        createdByUserId: actor.userId,
+        createdByEmail: actor.userEmail,
+        updatedBy: actor.userName,
+        updatedByUserId: actor.userId,
+        updatedByEmail: actor.userEmail,
       };
 
       await dynamoClient.send(
@@ -459,6 +480,15 @@ async function processRows(rows: PropertyRow[], tableName: string): Promise<{
 
       processedIds.add(row.propertyId);
       successCount++;
+
+      historyEntries.push({
+        propertyId: row.propertyId,
+        propertyName: row.name || '',
+        action: 'bulkCreate',
+        detail: 'CSV一括登録',
+        actor,
+        tableName: historyTableName,
+      });
     } catch (err) {
       errors.push({
         row: rowNumber,
@@ -467,6 +497,11 @@ async function processRows(rows: PropertyRow[], tableName: string): Promise<{
         data: row,
       });
     }
+  }
+
+  // 操作履歴をまとめて記録
+  if (historyEntries.length > 0) {
+    await recordHistoryBatch(historyEntries);
   }
 
   // エラーファイルを S3 に保存

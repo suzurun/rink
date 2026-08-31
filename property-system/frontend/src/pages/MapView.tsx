@@ -16,6 +16,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProperties } from '../api/properties';
+import { getFreshIdToken } from '../api/auth';
 import { PropertyListItem, PropertySearchParams } from '../types/property';
 import { PROPERTY_CATEGORIES } from '../config/propertyCategories';
 
@@ -115,12 +116,16 @@ export default function MapView() {
   // 認証チェック（未ログインはログインへ誘導）
   // ========================================
   useEffect(() => {
-    const token = localStorage.getItem('idToken');
-    if (!token) {
-      router.push('/login?redirect=/map');
-      return;
-    }
-    setIsAuthenticated(true);
+    const checkAuth = async () => {
+      // 保存済みトークンは 1 時間で切れるため、セッションから取り直して判定する
+      const token = await getFreshIdToken();
+      if (!token) {
+        router.push('/login?redirect=/map');
+        return;
+      }
+      setIsAuthenticated(true);
+    };
+    checkAuth();
   }, [router]);
 
   // ========================================

@@ -17,7 +17,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProperties } from '../api/properties';
+import { getHistory } from '../api/history';
 import { logout, isAdmin } from '../api/auth';
+import { HistoryEntry } from '../types/history';
 import {
   PropertyListItem,
   PropertySearchParams,
@@ -52,6 +54,8 @@ export default function PropertyList() {
 
   // 管理者権限
   const [isAdminUser, setIsAdminUser] = useState(false);
+  // 最終更新（システム全体で最後に行われた編集）
+  const [lastUpdate, setLastUpdate] = useState<HistoryEntry | null>(null);
 
   // 管理者権限チェック
   useEffect(() => {
@@ -70,6 +74,10 @@ export default function PropertyList() {
 
   // ビューモード（list / map）
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+
+  // URL から表示状態を復元し終えたか
+  // （復元前に検索を走らせると初期状態のまま取得してしまうため）
+  const [restored, setRestored] = useState(false);
 
   // ========================================
   // データ取得
@@ -106,8 +114,82 @@ export default function PropertyList() {
   }, [currentPage, keyword, typeLarge, typeMedium, staff, sortBy]);
 
   useEffect(() => {
+    if (!restored) return;
     fetchProperties();
-  }, [fetchProperties]);
+  }, [restored, fetchProperties]);
+
+  // ========================================
+  // 表示状態の保存・復元
+  // ブラウザの「戻る」で直前に見ていた一覧（ページ番号・検索条件）に戻すため、
+  // 画面の状態を URL のクエリに持たせる。
+  // ========================================
+
+  // 初回: URL から復元
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    const page = Number(params.get('page'));
+    if (Number.isFinite(page) && page > 0) setCurrentPage(page);
+
+    const restoredKeyword = params.get('keyword') || '';
+    const restoredTypeLarge = params.get('typeLarge') || '';
+    const restoredTypeMedium = params.get('typeMedium') || '';
+    const restoredStaff = params.get('staff') || '';
+
+    setKeyword(restoredKeyword);
+    setTypeLarge(restoredTypeLarge);
+    setTypeMedium(restoredTypeMedium);
+    setStaff(restoredStaff);
+
+    const sort = params.get('sortBy');
+    if (sort === 'name' || sort === 'staff' || sort === 'typeLarge') {
+      setSortBy(sort);
+    }
+
+    setNoMapOnly(params.get('noMap') === '1');
+
+    // 絞り込みが効いている場合は絞り込み欄を開いた状態にする
+    if (restoredTypeLarge || restoredTypeMedium || restoredStaff) {
+      setShowFilters(true);
+    }
+
+    setRestored(true);
+  }, []);
+
+  // 状態が変わるたび URL を書き換える
+  // （replaceState を使い、検索のたびに履歴が増えないようにする）
+  useEffect(() => {
+    if (!restored) return;
+
+    const params = new URLSearchParams();
+    if (currentPage > 1) params.set('page', String(currentPage));
+    if (keyword) params.set('keyword', keyword);
+    if (typeLarge) params.set('typeLarge', typeLarge);
+    if (typeMedium) params.set('typeMedium', typeMedium);
+    if (staff) params.set('staff', staff);
+    if (sortBy !== 'name') params.set('sortBy', sortBy);
+    if (noMapOnly) params.set('noMap', '1');
+
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${query ? `?${query}` : ''}`
+    );
+  }, [restored, currentPage, keyword, typeLarge, typeMedium, staff, sortBy, noMapOnly]);
+
+  // 最終更新の取得（履歴が無い場合や取得失敗時は何も表示しない）
+  useEffect(() => {
+    const fetchLastUpdate = async () => {
+      try {
+        const response = await getHistory({ limit: 1 });
+        setLastUpdate(response.data?.[0] || null);
+      } catch {
+        setLastUpdate(null);
+      }
+    };
+    fetchLastUpdate();
+  }, []);
 
   // ========================================
   // イベントハンドラー
@@ -166,6 +248,16 @@ export default function PropertyList() {
                   ユーザー管理
                 </button>
               )}
+              {/* 操作ログ（管理者のみ） */}
+              {isAdminUser && (
+                <button
+                  onClick={() => router.push('/logs')}
+                  className="inline-flex items-center px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <HistoryIcon className="w-4 h-4 mr-1.5" />
+                  操作ログ
+                </button>
+              )}
               {/* ログアウトボタン */}
               <button
                 onClick={handleLogout}
@@ -219,6 +311,28 @@ export default function PropertyList() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* 最終更新 */}
+        {lastUpdate && (
+          <button
+            type="button"
+            onClick={() => router.push(`/properties/${lastUpdate.propertyId}`)}
+            className="w-full text-left bg-white rounded-xl shadow-sm border border-slate-200 px-4 py-3 mb-4 hover:border-blue-300 hover:bg-blue-50/40 transition-colors"
+          >
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-xs font-medium text-slate-500">最終更新</span>
+              <span className="text-sm font-semibold text-slate-800">{lastUpdate.userName}</span>
+              <span className="text-sm text-slate-600">
+                {formatDateTime(lastUpdate.timestamp)}
+              </span>
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              <span className="font-medium text-blue-600">{lastUpdate.propertyId}</span>
+              {lastUpdate.propertyName && <span className="ml-1.5">{lastUpdate.propertyName}</span>}
+              <span className="ml-1.5">（{describeLastUpdate(lastUpdate)}）</span>
+            </div>
+          </button>
+        )}
+
         {/* 検索・フィルター */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
           <form onSubmit={handleSearch}>
@@ -558,6 +672,62 @@ function MapIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+    </svg>
+  );
+}
+
+/**
+ * ISO8601 → 2026/08/31 14:20
+ */
+function formatDateTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return isoStr;
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
+}
+
+/**
+ * 最終更新の内容を短く説明する
+ * 例: 「担当者を変更」「担当者ほか2項目を変更」「新規登録」
+ */
+function describeLastUpdate(entry: HistoryEntry): string {
+  switch (entry.action) {
+    case 'create':
+      return '新規登録';
+    case 'delete':
+      return '削除';
+    case 'bulkCreate':
+      return 'CSV一括登録';
+    case 'fileUpload':
+      return entry.detail ? `ファイルを追加 ${entry.detail}` : 'ファイルを追加';
+    case 'fileDelete':
+      return entry.detail ? `ファイルを削除 ${entry.detail}` : 'ファイルを削除';
+    case 'update': {
+      const changes = entry.changes || [];
+      if (changes.length === 0) return '編集';
+      if (changes.length === 1) return `${changes[0].label}を変更`;
+      return `${changes[0].label}ほか${changes.length - 1}項目を変更`;
+    }
+    default:
+      return '編集';
+  }
+}
+
+function HistoryIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
     </svg>
   );
 }

@@ -3,6 +3,7 @@ import { DynamoDBClient, PutItemCommand, GetItemCommand } from '@aws-sdk/client-
 import { marshall } from '@aws-sdk/util-dynamodb';
 
 import { resolveTableName } from '../shared/tenantResolver';
+import { getActor, recordHistory } from '../shared/auditLog';
 
 const client = new DynamoDBClient({});
 
@@ -81,6 +82,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     const now = new Date().toISOString();
+    const actor = getActor(event);
     const item = {
       ...input,
       files: {
@@ -92,6 +94,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       },
       createdAt: now,
       updatedAt: now,
+      // 更新者表示・操作履歴用
+      createdBy: actor.userName,
+      createdByUserId: actor.userId,
+      createdByEmail: actor.userEmail,
+      updatedBy: actor.userName,
+      updatedByUserId: actor.userId,
+      updatedByEmail: actor.userEmail,
     };
 
     await client.send(
@@ -100,6 +109,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         Item: marshall(item, { removeUndefinedValues: true }),
       })
     );
+
+    // 操作履歴を記録
+    await recordHistory({
+      event,
+      propertyId: input.propertyId,
+      propertyName: input.name || '',
+      action: 'create',
+      actor,
+    });
 
     return {
       statusCode: 201,

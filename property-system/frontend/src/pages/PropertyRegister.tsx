@@ -13,7 +13,8 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { getFreshIdToken } from '../api/auth';
 import {
   TYPE_LARGE_OPTIONS,
   TYPE_MEDIUM_OPTIONS,
@@ -89,6 +90,9 @@ export default function PropertyRegister() {
   const [isMobile, setIsMobile] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
+  // 保存完了後など、こちらの意図で画面遷移するときは離脱警告を出さない。
+  // hasChanges の更新は次の再描画まで反映されず、遷移に間に合わないため ref で判定する。
+  const skipUnloadWarningRef = useRef(false);
 
   // モバイル検出
   useEffect(() => {
@@ -104,6 +108,8 @@ export default function PropertyRegister() {
   useEffect(() => {
     if (!hasChanges) return;
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // 保存後の遷移では警告しない
+      if (skipUnloadWarningRef.current) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -297,7 +303,7 @@ export default function PropertyRegister() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem('idToken');
+      const token = await getFreshIdToken();
 
       // 送信データを構築
       const submitData: Record<string, any> = {
@@ -346,6 +352,7 @@ export default function PropertyRegister() {
       // 成功時は詳細画面へ遷移
       alert('物件を登録しました');
       setHasChanges(false);
+      skipUnloadWarningRef.current = true;
       const redirectTo = redirectOverride || pendingRedirect || `/properties/${formData.propertyId}`;
       setPendingRedirect(null);
       window.location.href = redirectTo;
@@ -375,6 +382,8 @@ export default function PropertyRegister() {
       setPendingRedirect(target);
       submitForm(target);
     } else {
+      // 破棄を選んだ後にブラウザの離脱確認まで出すと二重確認になる
+      skipUnloadWarningRef.current = true;
       window.location.href = target;
     }
   };

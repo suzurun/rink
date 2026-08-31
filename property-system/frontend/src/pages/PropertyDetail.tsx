@@ -228,6 +228,12 @@ export default function PropertyDetail() {
   };
 
   const handleBack = () => {
+    // 直前に見ていた一覧（ページ番号・検索条件つき）に戻す。
+    // 履歴が無い場合（ブックマークや直リンクで開いた場合）は一覧の先頭へ。
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
     window.location.href = '/properties';
   };
 
@@ -362,6 +368,7 @@ interface PropertyInfoTabProps {
 }
 
 function PropertyInfoTab({ property, onOpenMap }: PropertyInfoTabProps) {
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       {/* 所在地セクション */}
@@ -418,14 +425,31 @@ function PropertyInfoTab({ property, onOpenMap }: PropertyInfoTabProps) {
         </div>
       </div>
 
-      {/* メタ情報 */}
+      {/* 更新者・メタ情報 */}
       <div className="px-6 py-4 bg-slate-50 border-t border-slate-100">
-        <div className="flex gap-6 text-xs text-slate-400">
+        {/* 最新の変更を加えたユーザー（機能追加前のデータには記録が無いため非表示） */}
+        {/* 最新の変更を加えたユーザー（機能追加前のデータには記録が無いため非表示） */}
+        {property.updatedBy && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-3">
+            <span className="text-xs font-medium text-slate-500">更新者</span>
+            <span className="text-sm font-semibold text-slate-800">{property.updatedBy}</span>
+            {property.updatedAt && (
+              <span className="text-sm text-slate-600">
+                {formatDateTime(property.updatedAt)}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
           {property.createdAt && (
-            <span>作成日: {new Date(property.createdAt).toLocaleString('ja-JP')}</span>
+            <span>
+              作成日: {formatDateTime(property.createdAt)}
+              {property.createdBy ? `（${property.createdBy}）` : ''}
+            </span>
           )}
           {property.updatedAt && (
-            <span>更新日: {new Date(property.updatedAt).toLocaleString('ja-JP')}</span>
+            <span>更新日: {formatDateTime(property.updatedAt)}</span>
           )}
         </div>
       </div>
@@ -690,6 +714,22 @@ function formatZipcode(zipcode?: string): string {
     return `${zipcode.slice(0, 3)}-${zipcode.slice(3)}`;
   }
   return zipcode;
+}
+
+/**
+ * ISO8601 の日時を「2026/08/31 14:20」形式で表示する
+ */
+function formatDateTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return isoStr;
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
 }
 
 function formatDate(dateStr: string): string {

@@ -16,6 +16,8 @@ import {
   isAuthenticated,
   register,
   confirmRegistration,
+  getRememberLogin,
+  setRememberLogin,
 } from '../../api/auth';
 
 type ViewMode = 'login' | 'newPassword' | 'forgotPassword' | 'confirmReset' | 'register' | 'confirmRegister';
@@ -27,6 +29,8 @@ export default function LoginPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // ログイン状態を保持するか（既定: 保持する）
+  const [rememberLogin, setRememberLoginState] = useState(true);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetCode, setResetCode] = useState('');
@@ -39,6 +43,9 @@ export default function LoginPage() {
 
   // 既にログイン済みかチェック（バックグラウンドで実行）
   useEffect(() => {
+    // 前回の「ログイン状態を保持する」設定を復元
+    setRememberLoginState(getRememberLogin());
+
     const checkAuth = async () => {
       try {
         // クライアントサイドでのみ実行
@@ -66,6 +73,9 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // トークンの保存先を確定させてからログインする
+      setRememberLogin(rememberLogin);
+
       const result = await login(email, password);
 
       if (result.requireNewPassword) {
@@ -317,6 +327,25 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 autoComplete="current-password"
               />
+
+              {/* ログイン状態の保持 */}
+              <div className="flex items-start gap-2">
+                <input
+                  id="rememberLogin"
+                  type="checkbox"
+                  checked={rememberLogin}
+                  onChange={(e) => setRememberLoginState(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                />
+                <label htmlFor="rememberLogin" className="text-sm text-slate-700 cursor-pointer">
+                  ログイン状態を保持する
+                  <span className="block text-xs text-slate-500 mt-0.5">
+                    {rememberLogin
+                      ? 'ブラウザを閉じても最長30日間ログインしたままになります'
+                      : 'ブラウザを閉じるとログアウトします（共用パソコン向け）'}
+                  </span>
+                </label>
+              </div>
 
               {/* ログインボタン */}
               <SubmitButton loading={loading} text="ログイン" loadingText="ログイン中..." />

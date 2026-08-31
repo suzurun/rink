@@ -31,6 +31,11 @@ export interface Property extends PropertyListItem {
   files?: PropertyFiles;
   createdAt?: string;
   updatedAt?: string;
+  // 登録者・更新者（操作履歴と連動）
+  createdBy?: string;
+  createdByEmail?: string;
+  updatedBy?: string;
+  updatedByEmail?: string;
 }
 
 // ファイル一覧

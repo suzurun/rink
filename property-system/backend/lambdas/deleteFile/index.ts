@@ -23,6 +23,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { S3Client, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 
+import { recordHistory } from '../shared/auditLog';
+
 const s3Client = new S3Client({});
 const BUCKET_NAME = process.env.BUCKET_NAME || '';
 
@@ -95,6 +97,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         Key: key,
       })
     );
+
+    // 操作履歴を記録
+    await recordHistory({
+      event,
+      propertyId,
+      action: 'fileDelete',
+      detail: key.split('/').pop() || key,
+    });
 
     return successResponse({
       status: 'success',

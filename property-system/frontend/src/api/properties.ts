@@ -8,27 +8,24 @@ import {
   PropertySearchParams,
 } from '../types/property';
 import { signOut } from 'aws-amplify/auth';
+import { getFreshIdToken, clearRememberedSession } from './auth';
 
 // API ベース URL（環境変数から取得）
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 /**
- * 認証トークンを取得
- */
-function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('idToken');
-}
-
-/**
  * 共通のリクエストヘッダー
+ *
+ * 保存済みトークンをそのまま使うと 1 時間で期限切れになるため、
+ * 毎回 Amplify からトークンを取得する（期限が近ければ自動で更新される）。
+ * これによりリフレッシュトークンの有効期間中はログイン状態が維持される。
  */
-function getHeaders(): HeadersInit {
+export async function getHeaders(): Promise<HeadersInit> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
 
-  const token = getAuthToken();
+  const token = await getFreshIdToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -43,25 +40,25 @@ function getHeaders(): HeadersInit {
 /**
  * API エラーハンドリング
  */
-async function handleResponse<T>(response: Response): Promise<T> {
+export async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) {
-      // 認証エラー時はAmplifyセッションとトークンをクリアしてログイン画面へ
+      // ここに来るのはトークンの自動更新にも失敗した場合
+      // （リフレッシュトークンの期限切れ＝最後のログインから30日経過など）。
+      // セッションを片付けてログイン画面へ戻す。
       if (typeof window !== 'undefined') {
         try {
           await signOut();
         } catch (e) {
           console.error('Sign out error:', e);
         }
-        localStorage.removeItem('idToken');
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
+        clearRememberedSession();
         // リダイレクト（次のイベントループで実行）
         setTimeout(() => {
           window.location.href = '/login';
         }, 0);
       }
-      throw new Error('認証が必要です。ログインページへ移動します。');
+      throw new Error('認証の有効期限が切れました。再度ログインしてください。');
     }
     
     const errorData = await response.json().catch(() => ({}));
@@ -93,7 +90,7 @@ export async function getProperties(
 
   const response = await fetch(url, {
     method: 'GET',
-    headers: getHeaders(),
+    headers: await getHeaders(),
   });
 
   return handleResponse<PropertyListResponse>(response);
@@ -111,7 +108,7 @@ export async function getPropertiesForExport(): Promise<{
 
   const response = await fetch(url, {
     method: 'GET',
-    headers: getHeaders(),
+    headers: await getHeaders(),
   });
 
   return handleResponse(response);
@@ -123,7 +120,7 @@ export async function getPropertiesForExport(): Promise<{
 export async function getProperty(propertyId: string): Promise<PropertyDetailResponse> {
   const response = await fetch(`${API_BASE_URL}/properties/${propertyId}`, {
     method: 'GET',
-    headers: getHeaders(),
+    headers: await getHeaders(),
   });
 
   return handleResponse<PropertyDetailResponse>(response);
@@ -145,7 +142,7 @@ export async function getUploadUrl(
 }> {
   const response = await fetch(`${API_BASE_URL}/upload-url`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: await getHeaders(),
     body: JSON.stringify({ propertyId, fileType, fileName }),
   });
 
@@ -205,7 +202,7 @@ export async function createProperty(
 ): Promise<PropertyDetailResponse> {
   const response = await fetch(`${API_BASE_URL}/properties`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: await getHeaders(),
     body: JSON.stringify(data),
   });
 
@@ -221,7 +218,7 @@ export async function updateProperty(
 ): Promise<PropertyDetailResponse> {
   const response = await fetch(`${API_BASE_URL}/properties/${propertyId}`, {
     method: 'PUT',
-    headers: getHeaders(),
+    headers: await getHeaders(),
     body: JSON.stringify(data),
   });
 
@@ -234,7 +231,7 @@ export async function updateProperty(
 export async function deleteProperty(propertyId: string): Promise<{ status: string; message: string }> {
   const response = await fetch(`${API_BASE_URL}/properties/${propertyId}`, {
     method: 'DELETE',
-    headers: getHeaders(),
+    headers: await getHeaders(),
   });
 
   return handleResponse(response);
@@ -271,7 +268,7 @@ export interface FilesResponse {
 export async function getPropertyFiles(propertyId: string): Promise<FilesResponse> {
   const response = await fetch(`${API_BASE_URL}/properties/${propertyId}/files`, {
     method: 'GET',
-    headers: getHeaders(),
+    headers: await getHeaders(),
   });
 
   return handleResponse<FilesResponse>(response);
@@ -288,7 +285,7 @@ export async function deleteFile(
     `${API_BASE_URL}/properties/${propertyId}/files?key=${encodeURIComponent(key)}`,
     {
       method: 'DELETE',
-      headers: getHeaders(),
+      headers: await getHeaders(),
     }
   );
 

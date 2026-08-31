@@ -6,7 +6,10 @@ import {
   DeleteObjectsCommand,
 } from '@aws-sdk/client-s3';
 
+import { unmarshall } from '@aws-sdk/util-dynamodb';
+
 import { resolveTableName } from '../shared/tenantResolver';
+import { recordHistory } from '../shared/auditLog';
 
 const dynamoClient = new DynamoDBClient({});
 const s3Client = new S3Client({});
@@ -55,6 +58,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       };
     }
 
+    const beforeData = unmarshall(existingItem.Item);
+
     // S3 のファイルを削除
     if (BUCKET_NAME) {
       await deleteS3Folder(propertyId);
@@ -69,6 +74,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         },
       })
     );
+
+    // 操作履歴を記録（物件本体が消えても履歴は残る）
+    await recordHistory({
+      event,
+      propertyId,
+      propertyName: (beforeData.name ?? '') as string,
+      action: 'delete',
+    });
 
     return {
       statusCode: 200,
