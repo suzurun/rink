@@ -20,7 +20,10 @@ import {
   TYPE_MEDIUM_OPTIONS,
   STRUCTURE_OPTIONS,
   LAND_USE_OPTIONS,
+  RBS_OPTIONS,
+  OWNERSHIP_TYPE_OPTIONS,
 } from '../types/property';
+import HomeLogo from '../components/HomeLogo';
 
 // API ベース URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -39,6 +42,8 @@ const PREFECTURES = [
 // フォームデータの型
 interface PropertyFormData {
   propertyId: string;
+  rbs: string;
+  ownershipType: string;
   name: string;
   zipcode: string;
   prefecture: string;
@@ -61,6 +66,8 @@ interface PropertyFormData {
 // 初期値
 const initialFormData: PropertyFormData = {
   propertyId: '',
+  rbs: '',
+  ownershipType: '',
   name: '',
   zipcode: '',
   prefecture: '',
@@ -317,6 +324,8 @@ export default function PropertyRegister() {
       };
 
       // オプション項目（空でなければ追加）
+      if (formData.rbs) submitData.rbs = formData.rbs;
+      if (formData.ownershipType) submitData.ownershipType = formData.ownershipType;
       if (formData.lat) submitData.lat = parseFloat(formData.lat);
       if (formData.lng) submitData.lng = parseFloat(formData.lng);
       if (formData.typeMedium) submitData.typeMedium = formData.typeMedium;
@@ -426,7 +435,8 @@ export default function PropertyRegister() {
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <HomeLogo divider />
               <button
                 onClick={() => handleNavigate('/properties')}
                 className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
@@ -476,6 +486,26 @@ export default function PropertyRegister() {
                 required
                 placeholder="例: P0001"
                 helpText="英数字、ハイフン、アンダースコアのみ"
+              />
+
+              {/* RBS（該当する物件だけ選ぶ。空欄のままで構わない） */}
+              <FormSelect
+                label="RBS"
+                name="rbs"
+                value={formData.rbs}
+                onChange={handleChange}
+                options={RBS_OPTIONS}
+                placeholder="該当しない場合は空欄"
+              />
+
+              {/* 物件区分（リンクの物件か、預かりの物件か） */}
+              <FormSelect
+                label="物件区分"
+                name="ownershipType"
+                value={formData.ownershipType}
+                onChange={handleChange}
+                options={OWNERSHIP_TYPE_OPTIONS}
+                placeholder="未定の場合は空欄"
               />
 
               {/* 物件名 */}

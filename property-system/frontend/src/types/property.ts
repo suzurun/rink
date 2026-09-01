@@ -21,6 +21,11 @@ export interface PropertyListItem {
 
 // 物件詳細用（完全版）
 export interface Property extends PropertyListItem {
+  // RBS 物件かどうか（該当する物件だけ 'RBS'、それ以外は空欄）
+  rbs?: string;
+  // 物件区分（リンクの物件か、預かりの物件か）
+  ownershipType?: string;
+  siteStaff?: string;
   zipcode: string;
   landUse?: string;
   structure?: string;
@@ -72,6 +77,12 @@ export interface PropertyDetailResponse {
   status: 'success' | 'error';
   data: Property;
 }
+
+// RBS の選択肢（空欄＝RBSではない／未記入）
+export const RBS_OPTIONS = ['RBS'];
+
+// 物件区分の選択肢（空欄＝未記入）
+export const OWNERSHIP_TYPE_OPTIONS = ['リンク', '預かり'];
 
 // 大項目・中項目の選択肢
 export const TYPE_LARGE_OPTIONS = PROPERTY_CATEGORIES.map((item) => item.type);

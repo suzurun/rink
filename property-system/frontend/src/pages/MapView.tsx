@@ -19,6 +19,7 @@ import { getProperties } from '../api/properties';
 import { getFreshIdToken } from '../api/auth';
 import { PropertyListItem, PropertySearchParams } from '../types/property';
 import { PROPERTY_CATEGORIES } from '../config/propertyCategories';
+import HomeLogo from '../components/HomeLogo';
 
 // Google Maps API Key（環境変数から取得）
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -480,7 +481,8 @@ export default function MapView() {
       <header className="bg-white shadow-sm border-b border-slate-200 z-20">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 md:h-16">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3">
+              <HomeLogo divider />
               <button
                 onClick={() => { window.location.href = '/properties'; }}
                 className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"

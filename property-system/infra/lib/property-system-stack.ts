@@ -50,6 +50,7 @@ export class PropertySystemStack extends cdk.Stack {
   public readonly userPoolClient: cognito.UserPoolClient;
   public readonly propertiesTable: dynamodb.Table;
   public readonly historyTable: dynamodb.Table;
+  public readonly userLoginTable: dynamodb.Table;
   public readonly propertyBucket: s3.Bucket;
   public readonly frontendBucket: s3.Bucket;
   public readonly api: apigateway.RestApi;
@@ -293,6 +294,29 @@ export class PropertySystemStack extends cdk.Stack {
     });
 
     // =========================================================================
+    // 2-3. DynamoDB UserLogin テーブル（最終ログイン日時）
+    //
+    // Cognito にはログイン日時を保持する項目が無い（UserLastModifiedDate は
+    // アカウント情報の変更日であって、ログインしても更新されない）。
+    // PostAuthentication トリガーでサインインのたびにここへ記録する。
+    // =========================================================================
+    this.userLoginTable = new dynamodb.Table(this, 'UserLoginTable', {
+      tableName: `UserLogin-${envName}`,
+
+      // Cognito の Username（sub）を1件1ユーザーで持つ
+      partitionKey: {
+        name: 'userId',
+        type: dynamodb.AttributeType.STRING,
+      },
+
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+
+      // 利用状況の記録なので環境を問わず残す
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // =========================================================================
     // 3. S3 Bucket（物件ファイル保存）
     // =========================================================================
     this.propertyBucket = new s3.Bucket(this, 'PropertyBucket', {
@@ -371,6 +395,7 @@ export class PropertySystemStack extends cdk.Stack {
     const lambdaEnvironment: Record<string, string> = {
       TABLE_NAME: this.propertiesTable.tableName,
       HISTORY_TABLE_NAME: this.historyTable.tableName,
+      LOGIN_TABLE_NAME: this.userLoginTable.tableName,
       BUCKET_NAME: this.propertyBucket.bucketName,
       USER_POOL_ID: this.userPool.userPoolId,
       REGION: this.region,
@@ -425,6 +450,14 @@ export class PropertySystemStack extends cdk.Stack {
       memorySize: 512,
     });
 
+    // ログイン日時の記録（Cognito PostAuthentication トリガー）
+    const recordLoginLambda = createLambda('recordLogin', 'recordLogin/index.ts');
+    this.userLoginTable.grantWriteData(recordLoginLambda);
+    this.userPool.addTrigger(
+      cognito.UserPoolOperation.POST_AUTHENTICATION,
+      recordLoginLambda
+    );
+
     // ユーザー管理 Lambda Functions
     const listUsersLambda = createLambda('listUsers', 'listUsers/index.ts');
     const inviteUserLambda = createLambda('inviteUser', 'inviteUser/index.ts');
@@ -468,6 +501,9 @@ export class PropertySystemStack extends cdk.Stack {
 
     // 操作ログ参照 Lambda（読み取りのみ）
     this.historyTable.grantReadData(getHistoryLambda);
+
+    // ユーザー一覧に最終ログイン日時を出すための読み取り権限
+    this.userLoginTable.grantReadData(listUsersLambda);
 
 
 

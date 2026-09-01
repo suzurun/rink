@@ -8,6 +8,8 @@ import { getActor, recordHistory, diffFields } from '../shared/auditLog';
 const client = new DynamoDBClient({});
 
 interface PropertyUpdateInput {
+  rbs?: string;
+  ownershipType?: string;
   name?: string;
   zipcode?: string;
   prefecture?: string;
@@ -23,6 +25,7 @@ interface PropertyUpdateInput {
   area?: number;
   owner?: string;
   staff?: string;
+  siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
 }
@@ -107,6 +110,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     };
 
     const fields = [
+      'rbs',
+      'ownershipType',
       'name',
       'zipcode',
       'prefecture',
@@ -122,6 +127,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       'area',
       'owner',
       'staff',
+      'siteStaff',
       'deliveryDate',
       'memo',
     ];

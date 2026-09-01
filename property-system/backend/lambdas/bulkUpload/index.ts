@@ -69,6 +69,8 @@ interface ErrorRow {
 // 物件データの型
 interface PropertyRow {
   propertyId: string;
+  rbs?: string;
+  ownershipType?: string;
   name: string;
   zipcode: string;
   prefecture: string;
@@ -84,6 +86,7 @@ interface PropertyRow {
   area?: number;
   owner?: string;
   staff?: string;
+  siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
 }
@@ -91,6 +94,8 @@ interface PropertyRow {
 // CSVヘッダー定義
 const CSV_HEADERS = [
   'propertyId',
+  'rbs',
+  'ownershipType',
   'name',
   'zipcode',
   'prefecture',
@@ -106,6 +111,7 @@ const CSV_HEADERS = [
   'area',
   'owner',
   'staff',
+  'siteStaff',
   'deliveryDate',
   'memo',
 ];
@@ -340,6 +346,9 @@ function mapJapaneseHeader(header: string): string | null {
   const mapping: Record<string, string> = {
     propertyid: 'propertyId',
     '物件id': 'propertyId',
+    rbs: 'rbs',
+    ownershiptype: 'ownershipType',
+    '物件区分': 'ownershipType',
     name: 'name',
     '物件名': 'name',
     zipcode: 'zipcode',
@@ -371,6 +380,8 @@ function mapJapaneseHeader(header: string): string | null {
     '施主': 'owner',
     staff: 'staff',
     '担当者': 'staff',
+    sitestaff: 'siteStaff',
+    '現場担当者': 'siteStaff',
     deliverydate: 'deliveryDate',
     '引渡時期': 'deliveryDate',
     memo: 'memo',

@@ -20,6 +20,7 @@ import { getProperties } from '../api/properties';
 import { getHistory } from '../api/history';
 import { logout, isAdmin } from '../api/auth';
 import { HistoryEntry } from '../types/history';
+import HomeLogo from '../components/HomeLogo';
 import {
   PropertyListItem,
   PropertySearchParams,
@@ -236,7 +237,10 @@ export default function PropertyList() {
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <h1 className="text-xl font-bold text-slate-800">物件一覧</h1>
+            <div className="flex items-center gap-3">
+              <HomeLogo divider />
+              <h1 className="text-xl font-bold text-slate-800">物件一覧</h1>
+            </div>
             <div className="flex items-center gap-3">
               {/* ユーザー管理（管理者のみ） */}
               {isAdminUser && (

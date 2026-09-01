@@ -15,6 +15,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { isAdmin, getIdToken, getFreshIdToken } from '../api/auth';
+import HomeLogo from '../components/HomeLogo';
 
 // API ベース URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -324,7 +325,8 @@ export default function UserManagement() {
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <HomeLogo divider />
               <button
                 onClick={() => {
                   window.location.href = '/properties';
@@ -457,6 +459,11 @@ export default function UserManagement() {
             </div>
           )}
         </div>
+
+        <p className="mt-3 text-xs text-slate-500">
+          最終ログインは、ログイン記録の仕組みを入れた日以降のサインインから記録されます。
+          それ以前のログインは記録が残っていないため「記録なし」と表示されます。
+        </p>
       </main>
 
       {/* 招待モーダル */}
@@ -652,9 +659,11 @@ function UserRow({ user, onEditGroup, onToggleStatus, onDelete }: UserRowProps) 
         <StatusBadge status={user.status} />
       </td>
       <td className="px-6 py-4 text-sm text-slate-500">
-        {user.lastLogin
-          ? new Date(user.lastLogin).toLocaleDateString('ja-JP')
-          : '未ログイン'}
+        {user.lastLogin ? (
+          formatLoginTime(user.lastLogin)
+        ) : (
+          <span className="text-slate-400">記録なし</span>
+        )}
       </td>
       <td className="px-6 py-4 text-right">
         <div className="flex justify-end gap-2">
@@ -891,8 +900,18 @@ function CloseIcon({ className }: { className?: string }) {
   );
 }
 
+/**
+ * 最終ログイン日時の表示（今日ログインしたかが分かるよう時刻まで出す）
+ */
+function formatLoginTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return isoStr;
 
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
 
-
-
-
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
+}

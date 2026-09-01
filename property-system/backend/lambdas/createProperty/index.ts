@@ -9,6 +9,8 @@ const client = new DynamoDBClient({});
 
 interface PropertyInput {
   propertyId: string;
+  rbs?: string;
+  ownershipType?: string;
   name: string;
   zipcode: string;
   prefecture: string;
@@ -24,6 +26,7 @@ interface PropertyInput {
   area?: number;
   owner?: string;
   staff?: string;
+  siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
 }

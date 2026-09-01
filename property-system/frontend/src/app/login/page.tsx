@@ -53,7 +53,7 @@ export default function LoginPage() {
         
         const authenticated = await isAuthenticated();
         if (authenticated) {
-          router.push('/properties');
+          router.push('/home');
         }
       } catch (error) {
         console.error('Auth check error:', error);
@@ -84,7 +84,7 @@ export default function LoginPage() {
         setError(null);
       } else if (result.success) {
         // ログイン成功
-        router.push('/properties');
+        router.push('/home');
       } else {
         setError(result.message || 'ログインに失敗しました');
       }
@@ -118,7 +118,7 @@ export default function LoginPage() {
       const result = await confirmNewPassword(newPassword);
 
       if (result.success) {
-        router.push('/properties');
+        router.push('/home');
       } else {
         setError(result.message || 'パスワードの設定に失敗しました');
       }
@@ -284,10 +284,16 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 px-4">
       <div className="w-full max-w-md">
-        {/* ロゴ・タイトル */}
+        {/* ロゴ・タイトル（ログイン前は戻る先が無いためリンクにしない） */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <BuildingIcon className="w-9 h-9 text-white" />
+          {/* ロゴ画像の地色が白のため、白いプレートに載せて背景のグラデーションから浮かせない */}
+          <div className="inline-flex items-center justify-center bg-white rounded-2xl shadow-sm px-6 py-4 mb-5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/rink-logo.png"
+              alt="株式会社リンク RINK GROUP"
+              className="h-8 sm:h-9 w-auto"
+            />
           </div>
           <h1 className="text-2xl font-bold text-slate-800">物件管理システム</h1>
           <p className="text-sm text-slate-500 mt-1">施工情報管理システム</p>
@@ -752,19 +758,6 @@ function SuccessMessage({ message }: { message: string }) {
     <div className="bg-green-50 border border-green-200 rounded-lg p-3">
       <p className="text-sm text-green-700">{message}</p>
     </div>
-  );
-}
-
-function BuildingIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-      />
-    </svg>
   );
 }
 

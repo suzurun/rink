@@ -11,6 +11,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getPropertiesForExport, updateProperty, createProperty, deleteProperty } from '../api/properties';
 import { PROPERTY_CATEGORIES } from '../config/propertyCategories';
+import { RBS_OPTIONS, OWNERSHIP_TYPE_OPTIONS } from '../types/property';
+import HomeLogo from '../components/HomeLogo';
 
 const TYPE_LARGE_OPTIONS = PROPERTY_CATEGORIES.map((c) => c.type);
 const TYPE_MEDIUM_MAP: Record<string, string[]> = PROPERTY_CATEGORIES.reduce(
@@ -26,6 +28,8 @@ interface PropertyRow {
   name: string;
   zipcode: string;
   prefecture: string;
+  rbs?: string;
+  ownershipType?: string;
   city: string;
   address: string;
   lat?: number;
@@ -56,6 +60,8 @@ interface ColumnDef {
 const COLUMNS: ColumnDef[] = [
   // 必須・主要グループ
   { key: 'propertyId', label: '物件ID', width: 90, editable: false, group: 'main' },
+  { key: 'rbs', label: 'RBS', width: 70, editable: true, type: 'select', options: RBS_OPTIONS, group: 'main' },
+  { key: 'ownershipType', label: '物件区分', width: 90, editable: true, type: 'select', options: OWNERSHIP_TYPE_OPTIONS, group: 'main' },
   { key: 'name', label: '物件名', width: 180, editable: true, group: 'main' },
   { key: 'typeLarge', label: '大項目', width: 140, editable: true, type: 'select', options: TYPE_LARGE_OPTIONS, group: 'main' },
   { key: 'typeMedium', label: '中項目', width: 120, editable: true, type: 'select', group: 'main' },
@@ -883,7 +889,8 @@ export default function PropertyTable() {
       <header className="bg-white shadow-sm border-b border-slate-200 z-20 flex-shrink-0">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3">
+              <HomeLogo divider />
               <button
                 onClick={() => {
                   window.location.href = '/properties';

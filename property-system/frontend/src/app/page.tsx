@@ -13,7 +13,7 @@ export default function Home() {
     // 自動で更新されるためログイン画面に戻されない。
     const checkAuth = async () => {
       const authenticated = await isAuthenticated();
-      router.push(authenticated ? '/properties' : '/login');
+      router.push(authenticated ? '/home' : '/login');
     };
     checkAuth();
   }, [router]);

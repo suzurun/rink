@@ -4,7 +4,7 @@
  * 認可: internal / admin（external → 403）
  *
  * Query Parameters:
- * - keyword: string - 名称・住所検索
+ * - keyword: string - 名称・住所・市区町村・所有者・担当者の横断検索
  * - typeLarge: string - 大項目（GSI: name-index）
  * - typeMedium: string - 中項目（GSI: medium-index）
  * - typeSmall: string - 小項目（フィルター）
@@ -320,7 +320,8 @@ function applyFilters(items: Property[], params: QueryParams): Property[] {
     filtered = filtered.filter((item) => item.staff === params.staff);
   }
 
-  // キーワード検索（名称・住所・市区町村）
+  // キーワード検索（名称・住所・市区町村・所有者・担当者）
+  // 物件ID と備考は対象外（ID は一覧から辿る運用、備考は無関係な物件が混ざるため）
   if (params.keyword) {
     const keyword = params.keyword.toLowerCase();
     filtered = filtered.filter((item) => {
@@ -330,6 +331,7 @@ function applyFilters(items: Property[], params: QueryParams): Property[] {
         item.city,
         item.prefecture,
         item.owner,
+        item.staff,
       ];
       return searchFields.some(
         (field) => field && field.toLowerCase().includes(keyword)

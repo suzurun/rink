@@ -16,6 +16,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getFreshIdToken } from '../api/auth';
 import { getPropertiesForExport } from '../api/properties';
+import HomeLogo from '../components/HomeLogo';
 
 // API ベース URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -23,6 +24,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 // CSVテンプレートのヘッダー
 const CSV_HEADERS = [
   'propertyId',
+  'rbs',
+  'ownershipType',
   'name',
   'zipcode',
   'prefecture',
@@ -45,6 +48,8 @@ const CSV_HEADERS = [
 // 日本語ヘッダー
 const CSV_HEADERS_JP = [
   '物件ID',
+  'RBS',
+  '物件区分',
   '物件名',
   '郵便番号',
   '都道府県',
@@ -235,6 +240,8 @@ export default function BulkUpload() {
     const headerRow = CSV_HEADERS_JP.join(',');
     const sampleRow = [
       'P0001',
+      'RBS',
+      'リンク',
       '大谷ビル',
       '8100004',
       '福岡県',
@@ -386,7 +393,8 @@ export default function BulkUpload() {
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <HomeLogo divider />
               <button
                 onClick={() => {
                   window.location.href = '/properties';
@@ -701,6 +709,8 @@ export default function BulkUpload() {
             <li>• 1行目はヘッダー行として扱われます</li>
             <li>• 必須は<strong>物件ID</strong>のみです（物件名・大項目・住所などは任意）</li>
             <li>• 既存の物件IDと重複する場合はエラーになります</li>
+            <li>• <strong>RBS</strong> は該当する物件だけ「RBS」と入力します（該当しなければ空欄）</li>
+            <li>• <strong>物件区分</strong> は「リンク」か「預かり」を入力します（未定なら空欄）</li>
             <li>• 一度に登録できるのは最大1,000件までです</li>
           </ul>
         </section>

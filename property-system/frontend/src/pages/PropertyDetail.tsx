@@ -16,6 +16,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { getProperty, getUploadUrl, uploadFileToS3, getPropertyFiles, deleteFile, FileInfo } from '../api/properties';
 import { Property } from '../types/property';
+import HomeLogo from '../components/HomeLogo';
 
 // 1物件あたりの最大ファイル数（カテゴリごと）
 const MAX_FILES_PER_CATEGORY = 50;
@@ -286,7 +287,8 @@ export default function PropertyDetail() {
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <HomeLogo divider />
               <button
                 onClick={handleBack}
                 className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
@@ -407,6 +409,8 @@ function PropertyInfoTab({ property, onOpenMap }: PropertyInfoTabProps) {
       {/* 物件情報グリッド */}
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
         <InfoItem label="物件ID" value={property.propertyId} />
+        <InfoItem label="RBS" value={property.rbs} />
+        <InfoItem label="物件区分" value={property.ownershipType} />
         <InfoItem label="物件名" value={property.name} />
         <InfoItem label="大項目" value={property.typeLarge} highlight />
         <InfoItem label="中項目" value={property.typeMedium} />

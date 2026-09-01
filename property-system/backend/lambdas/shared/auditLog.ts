@@ -113,6 +113,8 @@ export function resolveHistoryTableName(event: APIGatewayProxyEvent): string {
 
 /** 画面表示用の項目名 */
 export const FIELD_LABELS: Record<string, string> = {
+  rbs: 'RBS',
+  ownershipType: '物件区分',
   name: '物件名',
   zipcode: '郵便番号',
   prefecture: '都道府県',
@@ -128,6 +130,7 @@ export const FIELD_LABELS: Record<string, string> = {
   area: '面積',
   owner: '施主',
   staff: '担当者',
+  siteStaff: '現場担当者',
   deliveryDate: '引渡時期',
   memo: '備考',
 };
