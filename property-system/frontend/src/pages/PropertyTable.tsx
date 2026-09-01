@@ -888,29 +888,30 @@ export default function PropertyTable() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200 z-20 flex-shrink-0">
         <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-2 md:gap-3">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-14">
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 md:gap-3 md:overflow-visible md:mx-0 md:px-0">
               <HomeLogo divider />
               <button
                 onClick={() => {
                   window.location.href = '/properties';
                 }}
-                className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                className="shrink-0 p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
-              <h1 className="text-lg font-bold text-slate-800">
+              <h1 className="text-lg font-bold text-slate-800 whitespace-nowrap">
                 {readOnly ? 'テーブル（閲覧のみ）' : 'テーブル編集'}
               </h1>
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-slate-500 whitespace-nowrap">
                 {categoryFilter ? `${categoryFilter} ${visibleRows.length} 件` : `${rows.length} 件`}
               </span>
 
               {/* 表示切替（すべて / 土地のみ） */}
-              <div className="ml-2 inline-flex rounded-lg border border-slate-300 overflow-hidden">
+              <div className="ml-2 inline-flex shrink-0 rounded-lg border border-slate-300 overflow-hidden">
                 <button
                   onClick={() => setCategoryFilter('')}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  className={`px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
                     categoryFilter === '' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
                   }`}
                 >
@@ -918,7 +919,7 @@ export default function PropertyTable() {
                 </button>
                 <button
                   onClick={() => setCategoryFilter('自社土地')}
-                  className={`px-3 py-1.5 text-xs font-medium border-l border-slate-300 transition-colors ${
+                  className={`px-3 py-1.5 text-xs font-medium whitespace-nowrap border-l border-slate-300 transition-colors ${
                     categoryFilter === '自社土地' ? 'bg-amber-700 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
                   }`}
                 >
@@ -928,11 +929,11 @@ export default function PropertyTable() {
             </div>
 
             {readOnly ? (
-              <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-slate-500 bg-slate-100 rounded-lg">
+              <span className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-1.5 text-xs font-medium text-slate-500 bg-slate-100 rounded-lg self-start md:self-auto">
                 閲覧のみ（編集はPCから）
               </span>
             ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 md:overflow-visible md:mx-0 md:px-0">
               {(dirtyRows.size > 0 || pendingDeleteIds.size > 0) && (
                 <span className="text-xs text-amber-600 font-medium">
                   {dirtyRows.size} 件の未保存の変更

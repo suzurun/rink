@@ -194,22 +194,23 @@ export default function OperationLog() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-16">
+            <div className="flex items-center gap-3 overflow-x-auto -mx-1 px-1 md:overflow-visible md:mx-0 md:px-0">
               <HomeLogo divider />
-              <h1 className="text-xl font-bold text-slate-800">操作ログ</h1>
+              <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap">操作ログ</h1>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 overflow-x-auto -mx-1 px-1 md:overflow-visible md:mx-0 md:px-0">
               <button
                 onClick={handleExportCsv}
                 disabled={entries.length === 0}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 CSV出力
               </button>
               <button
                 onClick={() => router.push('/properties')}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                className="shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 物件一覧へ戻る
               </button>

@@ -286,23 +286,24 @@ export default function PropertyDetail() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3 sm:gap-4">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-16">
+            <div className="flex items-center gap-3 overflow-x-auto -mx-1 px-1 sm:gap-4 md:overflow-visible md:mx-0 md:px-0">
               <HomeLogo divider />
               <button
                 onClick={handleBack}
-                className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                className="shrink-0 p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
-              <h1 className="text-xl font-bold text-slate-800 truncate max-w-md">
+              <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap truncate max-w-md">
                 {property.name}
               </h1>
             </div>
             {/* 編集ボタン（PCのみ） */}
             <button
               onClick={handleEdit}
-              className="hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              className="shrink-0 whitespace-nowrap hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
             >
               <EditIcon className="w-4 h-4 mr-2" />
               編集

@@ -392,18 +392,19 @@ export default function BulkUpload() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3 sm:gap-4">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-16">
+            <div className="flex items-center gap-3 overflow-x-auto -mx-1 px-1 sm:gap-4 md:overflow-visible md:mx-0 md:px-0">
               <HomeLogo divider />
               <button
                 onClick={() => {
                   window.location.href = '/properties';
                 }}
-                className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+                className="shrink-0 p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
-              <h1 className="text-xl font-bold text-slate-800">物件一括登録</h1>
+              <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap">物件一括登録</h1>
             </div>
           </div>
         </div>

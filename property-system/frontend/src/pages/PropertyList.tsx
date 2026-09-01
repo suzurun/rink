@@ -236,17 +236,19 @@ export default function PropertyList() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-16">
             <div className="flex items-center gap-3">
               <HomeLogo divider />
-              <h1 className="text-xl font-bold text-slate-800">物件一覧</h1>
+              <h1 className="text-lg font-bold text-slate-800 whitespace-nowrap md:text-xl">物件一覧</h1>
             </div>
-            <div className="flex items-center gap-3">
+            {/* ボタンが入りきらない場合は横スクロール（機能は隠さない） */}
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 md:gap-3 md:overflow-visible md:mx-0 md:px-0">
               {/* ユーザー管理（管理者のみ） */}
               {isAdminUser && (
                 <button
                   onClick={() => router.push('/users')}
-                  className="inline-flex items-center px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   <UsersIcon className="w-4 h-4 mr-1.5" />
                   ユーザー管理
@@ -256,7 +258,7 @@ export default function PropertyList() {
               {isAdminUser && (
                 <button
                   onClick={() => router.push('/logs')}
-                  className="inline-flex items-center px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   <HistoryIcon className="w-4 h-4 mr-1.5" />
                   操作ログ
@@ -265,14 +267,14 @@ export default function PropertyList() {
               {/* ログアウトボタン */}
               <button
                 onClick={handleLogout}
-                className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                className="shrink-0 whitespace-nowrap px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 ログアウト
               </button>
               {/* 地図ビュー切替 */}
               <button
                 onClick={handleMapView}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors md:px-4"
               >
                 <MapIcon className="w-4 h-4 mr-2" />
                 地図で表示
@@ -280,7 +282,7 @@ export default function PropertyList() {
               {/* テーブル閲覧（スマホのみ・閲覧専用） */}
               <button
                 onClick={() => { window.location.href = '/properties/table?view=1'; }}
-                className="md:hidden inline-flex items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                className="md:hidden inline-flex shrink-0 whitespace-nowrap items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <TableIcon className="w-4 h-4 mr-1.5" />
                 土地・表を見る
@@ -288,7 +290,7 @@ export default function PropertyList() {
               {/* テーブル編集（PCのみ） */}
               <button
                 onClick={() => { window.location.href = '/properties/table'; }}
-                className="hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                className="hidden md:inline-flex shrink-0 whitespace-nowrap items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <TableIcon className="w-4 h-4 mr-2" />
                 テーブル編集
@@ -296,7 +298,7 @@ export default function PropertyList() {
               {/* 一括登録（PCのみ） */}
               <button
                 onClick={() => router.push('/bulk-upload')}
-                className="hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                className="hidden md:inline-flex shrink-0 whitespace-nowrap items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <UploadIcon className="w-4 h-4 mr-2" />
                 一括登録
@@ -304,7 +306,7 @@ export default function PropertyList() {
               {/* 新規登録（PCのみ） */}
               <button
                 onClick={handleNewProperty}
-                className="hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                className="hidden md:inline-flex shrink-0 whitespace-nowrap items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <PlusIcon className="w-4 h-4 mr-2" />
                 新規登録

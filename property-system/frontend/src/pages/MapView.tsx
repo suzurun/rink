@@ -480,26 +480,27 @@ export default function MapView() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200 z-20">
         <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 md:h-16">
-            <div className="flex items-center gap-2 md:gap-3">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-14">
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 md:gap-3 md:overflow-visible md:mx-0 md:px-0">
               <HomeLogo divider />
               <button
                 onClick={() => { window.location.href = '/properties'; }}
-                className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                className="shrink-0 p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
-              <h1 className="text-lg md:text-xl font-bold text-slate-800">地図ビュー</h1>
-              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-full">
+              <h1 className="text-lg md:text-xl font-bold text-slate-800 whitespace-nowrap">地図ビュー</h1>
+              <span className="shrink-0 whitespace-nowrap hidden sm:inline-flex items-center px-2.5 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-full">
                 {filteredProperties.length} 件
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 md:overflow-visible md:mx-0 md:px-0">
               {/* 一覧ビュー切替 */}
               <button
                 onClick={() => { window.location.href = '/properties'; }}
-                className="inline-flex items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                className="shrink-0 whitespace-nowrap inline-flex items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <ListIcon className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">一覧</span>
