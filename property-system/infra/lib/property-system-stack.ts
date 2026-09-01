@@ -451,7 +451,18 @@ export class PropertySystemStack extends cdk.Stack {
     });
 
     // ログイン日時の記録（Cognito PostAuthentication トリガー）
-    const recordLoginLambda = createLambda('recordLogin', 'recordLogin/index.ts');
+    //
+    // 環境変数に USER_POOL_ID を入れないこと。
+    // ユーザープールがこの Lambda を参照する（トリガー登録）ため、
+    // Lambda 側からユーザープールを参照すると循環参照になりデプロイできない。
+    // この Lambda は DynamoDB に書くだけなのでユーザープールの情報は不要。
+    const recordLoginLambda = createLambda('recordLogin', 'recordLogin/index.ts', {
+      environment: {
+        LOGIN_TABLE_NAME: this.userLoginTable.tableName,
+        REGION: this.region,
+        NODE_OPTIONS: '--enable-source-maps',
+      },
+    });
     this.userLoginTable.grantWriteData(recordLoginLambda);
     this.userPool.addTrigger(
       cognito.UserPoolOperation.POST_AUTHENTICATION,
