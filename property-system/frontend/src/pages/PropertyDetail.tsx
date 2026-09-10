@@ -433,11 +433,13 @@ function PropertyInfoTab({ property, onOpenMap }: PropertyInfoTabProps) {
       {/* 更新者・メタ情報 */}
       <div className="px-6 py-4 bg-slate-50 border-t border-slate-100">
         {/* 最新の変更を加えたユーザー（機能追加前のデータには記録が無いため非表示） */}
-        {/* 最新の変更を加えたユーザー（機能追加前のデータには記録が無いため非表示） */}
-        {property.updatedBy && (
+        {/* 名前が記録されていない場合はメールアドレスを表示する */}
+        {(property.updatedBy || property.updatedByEmail) && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-3">
             <span className="text-xs font-medium text-slate-500">更新者</span>
-            <span className="text-sm font-semibold text-slate-800">{property.updatedBy}</span>
+            <span className="text-sm font-semibold text-slate-800">
+              {property.updatedBy || property.updatedByEmail}
+            </span>
             {property.updatedAt && (
               <span className="text-sm text-slate-600">
                 {formatDateTime(property.updatedAt)}

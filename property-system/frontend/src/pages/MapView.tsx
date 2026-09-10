@@ -417,6 +417,7 @@ export default function MapView() {
   // ========================================
   const createInfoWindowContent = (property: PropertyListItem): string => {
     const color = MARKER_COLORS[property.typeLarge] || MARKER_COLORS['その他'];
+    const updatedBy = formatUpdatedBy(property);
     return `
       <div style="min-width: 200px; font-family: system-ui, sans-serif;">
         <h3 style="margin: 0 0 8px; font-size: 16px; font-weight: 600; color: #1e293b;">
@@ -438,6 +439,11 @@ export default function MapView() {
         ${property.staff ? `
           <p style="margin: 4px 0 8px; font-size: 12px; color: #94a3b8;">
             担当: ${escapeHtml(property.staff)}
+          </p>
+        ` : ''}
+        ${updatedBy ? `
+          <p style="margin: 4px 0 8px; font-size: 12px; color: #94a3b8;">
+            最終更新: ${escapeHtml(updatedBy)}${property.updatedAt ? `（${escapeHtml(formatDateTime(property.updatedAt))}）` : ''}
           </p>
         ` : ''}
         <button
@@ -773,6 +779,12 @@ export default function MapView() {
                   </span>
                 )}
               </div>
+              {formatUpdatedBy(selectedProperty) && (
+                <p className="text-xs text-slate-500 mt-1 truncate">
+                  最終更新: {formatUpdatedBy(selectedProperty)}
+                  {selectedProperty.updatedAt && `（${formatDateTime(selectedProperty.updatedAt)}）`}
+                </p>
+              )}
             </div>
             <button
               onClick={() => router.push(`/properties/${selectedProperty.propertyId}`)}
@@ -796,6 +808,27 @@ export default function MapView() {
 // ========================================
 // ヘルパー関数
 // ========================================
+/**
+ * 最終更新者の表示名
+ * 名前が記録されていない場合はメールアドレスを出す（どちらも無ければ非表示）
+ */
+function formatUpdatedBy(property: PropertyListItem): string {
+  return property.updatedBy || property.updatedByEmail || '';
+}
+
+function formatDateTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return isoStr;
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')

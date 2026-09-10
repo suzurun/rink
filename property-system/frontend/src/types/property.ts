@@ -17,6 +17,10 @@ export interface PropertyListItem {
   staff?: string;
   lat?: number;
   lng?: number;
+  // 最終更新の記録（地図や一覧でも更新者を出すため一覧APIでも返す）
+  updatedAt?: string;
+  updatedBy?: string;
+  updatedByEmail?: string;
 }
 
 // 物件詳細用（完全版）
@@ -35,12 +39,9 @@ export interface Property extends PropertyListItem {
   memo?: string;
   files?: PropertyFiles;
   createdAt?: string;
-  updatedAt?: string;
-  // 登録者・更新者（操作履歴と連動）
+  // 登録者（更新者は PropertyListItem 側で定義）
   createdBy?: string;
   createdByEmail?: string;
-  updatedBy?: string;
-  updatedByEmail?: string;
 }
 
 // ファイル一覧

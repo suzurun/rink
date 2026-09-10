@@ -77,6 +77,8 @@ interface Property {
   memo?: string;
   createdAt?: string;
   updatedAt?: string;
+  updatedBy?: string;
+  updatedByEmail?: string;
 }
 
 /**
@@ -144,6 +146,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           staff: item.staff,
           lat: item.lat,
           lng: item.lng,
+          // 最終更新者（地図・一覧の表示用。記録が無い旧データは undefined）
+          updatedAt: item.updatedAt,
+          updatedBy: item.updatedBy,
+          updatedByEmail: item.updatedByEmail,
         }));
 
     return successResponse({
