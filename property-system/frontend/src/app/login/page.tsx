@@ -287,12 +287,12 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* ロゴ・タイトル（ログイン前は戻る先が無いためリンクにしない） */}
         <div className="text-center mb-8">
-          {/* ロゴ画像の地色が白のため、白いプレートに載せて背景のグラデーションから浮かせない */}
+          {/* 背景のグラデーションに沈まないよう、白いプレートに載せる */}
           <div className="inline-flex items-center justify-center bg-white rounded-2xl shadow-sm px-6 py-4 mb-5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/rink-logo.png"
-              alt="株式会社リンク RINK GROUP"
+              alt="株式会社リンク Keep Next Innovation Ring"
               className="h-8 sm:h-9 w-auto"
             />
           </div>

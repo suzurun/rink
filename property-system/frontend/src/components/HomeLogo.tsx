@@ -12,11 +12,13 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 
 const LOGO_SRC = '/rink-logo.png';
-const LOGO_ALT = '株式会社リンク RINK GROUP';
+const LOGO_ALT = '株式会社リンク Keep Next Innovation Ring';
 
-// 横長ロゴ（640x86）のうち、丸いマークは左端 0〜94px。
-// 高さを 28px に揃えたときのマーク幅がこの値になる。
-const MARK_WIDTH = '30px';
+// ロゴの高さ（横長・マークのみ共通）
+const LOGO_HEIGHT = 'h-8';
+// 横長ロゴ（646x144）の左端にある丸いマークはほぼ正方形なので、
+// 幅は高さと同じ 32px にすると過不足なく収まる。
+const MARK_WIDTH = '32px';
 
 interface HomeLogoProps {
   /** クリックでトップページに戻すか（既定: 戻す） */
@@ -33,7 +35,7 @@ export default function HomeLogo({ link = true, divider = false }: HomeLogoProps
       {/* 狭い画面: ロゴ左端のマークのみ */}
       <span
         aria-hidden="true"
-        className="block sm:hidden h-7 bg-no-repeat bg-left"
+        className={`block sm:hidden ${LOGO_HEIGHT} bg-no-repeat bg-left`}
         style={{
           width: MARK_WIDTH,
           backgroundImage: `url('${LOGO_SRC}')`,
@@ -42,7 +44,7 @@ export default function HomeLogo({ link = true, divider = false }: HomeLogoProps
       />
       {/* 通常: 横長ロゴ */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={LOGO_SRC} alt="" className="hidden sm:block h-7 w-auto" />
+      <img src={LOGO_SRC} alt="" className={`hidden sm:block ${LOGO_HEIGHT} w-auto`} />
     </>
   );
 
