@@ -53,7 +53,8 @@ export default function LoginPage() {
         
         const authenticated = await isAuthenticated();
         if (authenticated) {
-          router.push('/home');
+          // ログイン状態を維持したまま開き直したときは地図ビューを表示する
+          router.push('/map');
         }
       } catch (error) {
         console.error('Auth check error:', error);
