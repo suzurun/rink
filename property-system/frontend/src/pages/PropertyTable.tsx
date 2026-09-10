@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getPropertiesForExport, updateProperty, createProperty, deleteProperty } from '../api/properties';
 import { PROPERTY_CATEGORIES } from '../config/propertyCategories';
-import { RBS_OPTIONS, OWNERSHIP_TYPE_OPTIONS } from '../types/property';
+import { RBS_OPTIONS } from '../types/property';
 import HomeLogo from '../components/HomeLogo';
 
 const TYPE_LARGE_OPTIONS = PROPERTY_CATEGORIES.map((c) => c.type);
@@ -29,6 +29,7 @@ interface PropertyRow {
   zipcode: string;
   prefecture: string;
   rbs?: string;
+  // 物件区分は表の列からは外したが、保存時に値を送り返すため行データには残す
   ownershipType?: string;
   city: string;
   address: string;
@@ -61,7 +62,6 @@ const COLUMNS: ColumnDef[] = [
   // 必須・主要グループ
   { key: 'propertyId', label: '物件ID', width: 90, editable: false, group: 'main' },
   { key: 'rbs', label: 'RBS', width: 70, editable: true, type: 'select', options: RBS_OPTIONS, group: 'main' },
-  { key: 'ownershipType', label: '物件区分', width: 90, editable: true, type: 'select', options: OWNERSHIP_TYPE_OPTIONS, group: 'main' },
   { key: 'name', label: '物件名', width: 180, editable: true, group: 'main' },
   { key: 'typeLarge', label: '大項目', width: 140, editable: true, type: 'select', options: TYPE_LARGE_OPTIONS, group: 'main' },
   { key: 'typeMedium', label: '中項目', width: 120, editable: true, type: 'select', group: 'main' },
