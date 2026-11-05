@@ -46,6 +46,9 @@ interface PropertyRow {
   siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
+  signboard?: string; // 看板（自社土地用）
+  price?: string; // 金額（自社土地用。「3,000万円」などそのまま入れられるよう文字列）
+  landUpdateDate?: string; // 更新日（自社土地用・手入力。システムの最終更新日時 updatedAt とは別物）
 }
 
 interface ColumnDef {
@@ -61,7 +64,6 @@ interface ColumnDef {
 const COLUMNS: ColumnDef[] = [
   // 必須・主要グループ
   { key: 'propertyId', label: '物件ID', width: 90, editable: false, group: 'main' },
-  { key: 'rbs', label: 'RBS', width: 70, editable: true, type: 'select', options: RBS_OPTIONS, group: 'main' },
   { key: 'name', label: '物件名', width: 180, editable: true, group: 'main' },
   { key: 'typeLarge', label: '大項目', width: 140, editable: true, type: 'select', options: TYPE_LARGE_OPTIONS, group: 'main' },
   { key: 'typeMedium', label: '中項目', width: 120, editable: true, type: 'select', group: 'main' },
@@ -85,11 +87,15 @@ const COLUMNS: ColumnDef[] = [
 // 管理番号→typeSmall / 所在地→address / 通称→name / 面積→area / 担当→staff / 概要→memo
 const LAND_COLUMNS: ColumnDef[] = [
   { key: 'typeSmall', label: '管理番号', width: 110, editable: true, group: 'main' },
+  { key: 'rbs', label: '管理先', width: 80, editable: true, type: 'select', options: RBS_OPTIONS, group: 'main' },
   { key: 'address', label: '所在地', width: 220, editable: true, group: 'main' },
+  { key: 'signboard', label: '看板', width: 140, editable: true, group: 'main' },
   { key: 'name', label: '通称', width: 160, editable: true, group: 'main' },
   { key: 'area', label: '面積', width: 90, editable: true, group: 'main' },
+  { key: 'price', label: '金額', width: 110, editable: true, group: 'main' },
   { key: 'staff', label: '担当', width: 90, editable: true, group: 'main' },
   { key: 'memo', label: '概要', width: 240, editable: true, group: 'main' },
+  { key: 'landUpdateDate', label: '更新日', width: 110, editable: true, group: 'main' },
   { key: 'lat', label: '緯度', width: 110, editable: true, type: 'number', group: 'main' },
   { key: 'lng', label: '経度', width: 110, editable: true, type: 'number', group: 'main' },
 ];
@@ -175,17 +181,17 @@ export default function PropertyTable() {
     setTimeout(() => editInputRef.current?.focus(), 0);
   };
 
-  // セル編集確定
-  const commitEdit = (rowId: string, colKey: keyof PropertyRow) => {
+  // セル編集確定（select は選んだ値を直接渡す。editValue の反映を待つと古い値で確定してしまう）
+  const commitEdit = (rowId: string, colKey: keyof PropertyRow, value: string = editValue) => {
     setEditingCell(null);
 
     setRows((prev) =>
       prev.map((r) => {
         if (r.propertyId !== rowId) return r;
         const col = activeColumns.find((c) => c.key === colKey);
-        let newValue: any = editValue;
+        let newValue: any = value;
         if (col?.type === 'number') {
-          newValue = editValue ? parseFloat(editValue) : undefined;
+          newValue = value ? parseFloat(value) : undefined;
         }
         if (String(r[colKey] ?? '') === String(newValue ?? '')) return r;
 
@@ -463,6 +469,24 @@ export default function PropertyTable() {
       );
 
     if (replace) {
+      // Excelに無い項目（管理先・看板・金額・更新日）は、管理番号が同じ既存の土地から引き継ぐ
+      const prevByMng = new Map<string, PropertyRow>();
+      existingLand.forEach((r) => {
+        const mng = (r.typeSmall || '').trim();
+        if (mng && !prevByMng.has(mng)) prevByMng.set(mng, r);
+      });
+      parsed = parsed.map((r) => {
+        const prev = prevByMng.get((r.typeSmall || '').trim());
+        if (!prev) return r;
+        return {
+          ...r,
+          rbs: r.rbs || prev.rbs,
+          signboard: r.signboard || prev.signboard,
+          price: r.price || prev.price,
+          landUpdateDate: r.landUpdateDate || prev.landUpdateDate,
+        };
+      });
+
       // DB由来（新規行でない）の既存土地IDは、保存時にDBから削除する
       const removedDbIds = existingLand
         .filter((r) => !newRowIds.has(r.propertyId))
@@ -525,6 +549,7 @@ export default function PropertyTable() {
     try {
       await createProperty({
         propertyId: row.propertyId,
+        rbs: row.rbs,
         name: row.name,
         zipcode: row.zipcode || '',
         prefecture: row.prefecture || '',
@@ -540,6 +565,9 @@ export default function PropertyTable() {
         staff: row.staff,
         deliveryDate: row.deliveryDate,
         memo: row.memo,
+        signboard: row.signboard,
+        price: row.price,
+        landUpdateDate: row.landUpdateDate,
         lat: row.lat,
         lng: row.lng,
       });
@@ -1181,7 +1209,7 @@ export default function PropertyTable() {
                                 value={editValue}
                                 onChange={(e) => {
                                   setEditValue(e.target.value);
-                                  setTimeout(() => commitEdit(row.propertyId, col.key), 0);
+                                  commitEdit(row.propertyId, col.key, e.target.value);
                                 }}
                                 onBlur={() => commitEdit(row.propertyId, col.key)}
                                 onKeyDown={(e) => handleKeyDown(e, row.propertyId, col.key)}

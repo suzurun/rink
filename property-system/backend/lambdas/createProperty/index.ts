@@ -29,6 +29,9 @@ interface PropertyInput {
   siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
+  signboard?: string;
+  price?: string;
+  landUpdateDate?: string;
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {

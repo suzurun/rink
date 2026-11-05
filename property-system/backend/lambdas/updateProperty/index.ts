@@ -28,6 +28,9 @@ interface PropertyUpdateInput {
   siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
+  signboard?: string;
+  price?: string;
+  landUpdateDate?: string;
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -130,6 +133,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       'siteStaff',
       'deliveryDate',
       'memo',
+      'signboard',
+      'price',
+      'landUpdateDate',
     ];
 
     for (const field of fields) {

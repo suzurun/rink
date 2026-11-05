@@ -113,7 +113,10 @@ export function resolveHistoryTableName(event: APIGatewayProxyEvent): string {
 
 /** 画面表示用の項目名 */
 export const FIELD_LABELS: Record<string, string> = {
-  rbs: 'RBS',
+  rbs: '管理先',
+  signboard: '看板',
+  price: '金額',
+  landUpdateDate: '更新日',
   ownershipType: '物件区分',
   name: '物件名',
   zipcode: '郵便番号',

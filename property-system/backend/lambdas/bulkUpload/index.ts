@@ -347,6 +347,7 @@ function mapJapaneseHeader(header: string): string | null {
     propertyid: 'propertyId',
     '物件id': 'propertyId',
     rbs: 'rbs',
+    '管理先': 'rbs',
     ownershiptype: 'ownershipType',
     '物件区分': 'ownershipType',
     name: 'name',

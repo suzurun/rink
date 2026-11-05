@@ -144,6 +144,8 @@ export default function PropertyRegister() {
       if (name === 'typeLarge') {
         newData.typeMedium = '';
         newData.typeSmall = '';
+        // 管理先は自社土地だけの項目なので、他の大項目にしたら消す
+        if (value !== '自社土地') newData.rbs = '';
       }
 
       return newData;
@@ -489,15 +491,17 @@ export default function PropertyRegister() {
                 helpText="英数字、ハイフン、アンダースコアのみ"
               />
 
-              {/* RBS（該当する物件だけ選ぶ。空欄のままで構わない） */}
-              <FormSelect
-                label="RBS"
-                name="rbs"
-                value={formData.rbs}
-                onChange={handleChange}
-                options={RBS_OPTIONS}
-                placeholder="該当しない場合は空欄"
-              />
+              {/* 管理先（リンク／RBS。自社土地のときだけ出す。空欄のままで構わない） */}
+              {formData.typeLarge === '自社土地' && (
+                <FormSelect
+                  label="管理先"
+                  name="rbs"
+                  value={formData.rbs}
+                  onChange={handleChange}
+                  options={RBS_OPTIONS}
+                  placeholder="該当しない場合は空欄"
+                />
+              )}
 
               {/* 物件区分（リンクの物件か、預かりの物件か） */}
               <FormSelect

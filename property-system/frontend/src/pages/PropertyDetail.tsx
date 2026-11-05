@@ -410,7 +410,7 @@ function PropertyInfoTab({ property, onOpenMap }: PropertyInfoTabProps) {
       {/* 物件情報グリッド */}
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
         <InfoItem label="物件ID" value={property.propertyId} />
-        <InfoItem label="RBS" value={property.rbs} />
+        {property.typeLarge === '自社土地' && <InfoItem label="管理先" value={property.rbs} />}
         <InfoItem label="物件区分" value={property.ownershipType} />
         <InfoItem label="物件名" value={property.name} />
         <InfoItem label="大項目" value={property.typeLarge} highlight />

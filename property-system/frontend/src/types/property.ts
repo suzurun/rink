@@ -25,7 +25,7 @@ export interface PropertyListItem {
 
 // 物件詳細用（完全版）
 export interface Property extends PropertyListItem {
-  // RBS 物件かどうか（該当する物件だけ 'RBS'、それ以外は空欄）
+  // 管理先（'リンク' か 'RBS'。未記入は空欄）。項目名は旧「RBS」列の名残で rbs のまま
   rbs?: string;
   // 物件区分（リンクの物件か、預かりの物件か）
   ownershipType?: string;
@@ -79,8 +79,8 @@ export interface PropertyDetailResponse {
   data: Property;
 }
 
-// RBS の選択肢（空欄＝RBSではない／未記入）
-export const RBS_OPTIONS = ['RBS'];
+// 管理先の選択肢（空欄＝未記入）
+export const RBS_OPTIONS = ['リンク', 'RBS'];
 
 // 物件区分の選択肢（空欄＝未記入）
 export const OWNERSHIP_TYPE_OPTIONS = ['リンク', '預かり'];

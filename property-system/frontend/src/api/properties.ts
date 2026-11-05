@@ -175,6 +175,7 @@ export async function uploadFileToS3(
  */
 export interface CreatePropertyInput {
   propertyId: string;
+  rbs?: string;
   name: string;
   zipcode: string;
   prefecture: string;
@@ -192,6 +193,9 @@ export interface CreatePropertyInput {
   staff?: string;
   deliveryDate?: string;
   memo?: string;
+  signboard?: string;
+  price?: string;
+  landUpdateDate?: string;
 }
 
 /**

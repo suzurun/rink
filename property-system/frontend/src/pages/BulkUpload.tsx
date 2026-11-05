@@ -48,7 +48,7 @@ const CSV_HEADERS = [
 // 日本語ヘッダー
 const CSV_HEADERS_JP = [
   '物件ID',
-  'RBS',
+  '管理先',
   '物件区分',
   '物件名',
   '郵便番号',
@@ -710,7 +710,7 @@ export default function BulkUpload() {
             <li>• 1行目はヘッダー行として扱われます</li>
             <li>• 必須は<strong>物件ID</strong>のみです（物件名・大項目・住所などは任意）</li>
             <li>• 既存の物件IDと重複する場合はエラーになります</li>
-            <li>• <strong>RBS</strong> は該当する物件だけ「RBS」と入力します（該当しなければ空欄）</li>
+            <li>• <strong>管理先</strong> は「リンク」か「RBS」を入力します（未定なら空欄）</li>
             <li>• <strong>物件区分</strong> は「リンク」か「預かり」を入力します（未定なら空欄）</li>
             <li>• 一度に登録できるのは最大1,000件までです</li>
           </ul>
