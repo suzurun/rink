@@ -10,9 +10,53 @@ import {
   ListUsersCommand,
   AdminListGroupsForUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { DynamoDBClient, BatchGetItemCommand } from '@aws-sdk/client-dynamodb';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 
 const client = new CognitoIdentityProviderClient({});
+const dynamo = new DynamoDBClient({});
 const USER_POOL_ID = process.env.USER_POOL_ID!;
+const LOGIN_TABLE_NAME = process.env.LOGIN_TABLE_NAME || '';
+
+/**
+ * ログイン日時をまとめて取得する。
+ *
+ * Cognito はログイン日時を持たないため、PostAuthentication トリガー
+ * （recordLogin Lambda）が別テーブルに記録している。仕組みを入れる前の
+ * ログインは記録が無いので、その場合は undefined のままにする。
+ */
+async function fetchLastLogins(userIds: string[]): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+
+  if (!LOGIN_TABLE_NAME || userIds.length === 0) return result;
+
+  // BatchGetItem は 1 回あたり 100 件まで
+  for (let i = 0; i < userIds.length; i += 100) {
+    const chunk = userIds.slice(i, i + 100);
+
+    try {
+      const response = await dynamo.send(
+        new BatchGetItemCommand({
+          RequestItems: {
+            [LOGIN_TABLE_NAME]: {
+              Keys: chunk.map((userId) => marshall({ userId })),
+            },
+          },
+        })
+      );
+
+      for (const item of response.Responses?.[LOGIN_TABLE_NAME] || []) {
+        const record = unmarshall(item) as { userId: string; lastLogin?: string };
+        if (record.lastLogin) result[record.userId] = record.lastLogin;
+      }
+    } catch (err) {
+      // ログイン日時が取れなくてもユーザー一覧は返す
+      console.error('Error fetching last logins:', err);
+    }
+  }
+
+  return result;
+}
 
 interface User {
   userId: string;
@@ -41,6 +85,12 @@ export const handler = async (event: any) => {
     });
 
     const usersResult = await client.send(listUsersCommand);
+
+    // ログイン日時をまとめて引く
+    const lastLogins = await fetchLastLogins(
+      (usersResult.Users || []).map((u: { Username?: string }) => u.Username!).filter(Boolean)
+    );
+
     const users: User[] = [];
 
     for (const cognitoUser of usersResult.Users || []) {
@@ -67,7 +117,8 @@ export const handler = async (event: any) => {
         groups,
         status: cognitoUser.UserStatus || 'UNKNOWN',
         createdAt: cognitoUser.UserCreateDate?.toISOString(),
-        lastLogin: cognitoUser.UserLastModifiedDate?.toISOString(),
+        // UserLastModifiedDate はアカウント情報の変更日でログイン日ではないため使わない
+        lastLogin: lastLogins[cognitoUser.Username!],
       });
     }
 

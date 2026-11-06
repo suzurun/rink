@@ -3,10 +3,13 @@ import { DynamoDBClient, UpdateItemCommand, GetItemCommand } from '@aws-sdk/clie
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
 import { resolveTableName } from '../shared/tenantResolver';
+import { getActor, recordHistory, diffFields } from '../shared/auditLog';
 
 const client = new DynamoDBClient({});
 
 interface PropertyUpdateInput {
+  rbs?: string;
+  ownershipType?: string;
   name?: string;
   zipcode?: string;
   prefecture?: string;
@@ -22,8 +25,12 @@ interface PropertyUpdateInput {
   area?: number;
   owner?: string;
   staff?: string;
+  siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
+  signboard?: string;
+  price?: string;
+  landUpdateDate?: string;
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -79,17 +86,35 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const input: PropertyUpdateInput = JSON.parse(event.body);
     const now = new Date().toISOString();
+    const actor = getActor(event);
+    const beforeData = unmarshall(existingItem.Item);
 
-    // 更新式を動的に構築
-    const updateExpressions: string[] = ['#updatedAt = :updatedAt'];
+    // 変更前後の差分を抽出（履歴用）
+    const changes = diffFields(beforeData, input as Record<string, unknown>);
+
+    // 更新式を動的に構築（更新者情報も併せて保存）
+    const updateExpressions: string[] = [
+      '#updatedAt = :updatedAt',
+      '#updatedBy = :updatedBy',
+      '#updatedByUserId = :updatedByUserId',
+      '#updatedByEmail = :updatedByEmail',
+    ];
     const expressionAttributeNames: Record<string, string> = {
       '#updatedAt': 'updatedAt',
+      '#updatedBy': 'updatedBy',
+      '#updatedByUserId': 'updatedByUserId',
+      '#updatedByEmail': 'updatedByEmail',
     };
     const expressionAttributeValues: Record<string, any> = {
       ':updatedAt': { S: now },
+      ':updatedBy': { S: actor.userName },
+      ':updatedByUserId': { S: actor.userId },
+      ':updatedByEmail': { S: actor.userEmail },
     };
 
     const fields = [
+      'rbs',
+      'ownershipType',
       'name',
       'zipcode',
       'prefecture',
@@ -105,8 +130,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       'area',
       'owner',
       'staff',
+      'siteStaff',
       'deliveryDate',
       'memo',
+      'signboard',
+      'price',
+      'landUpdateDate',
     ];
 
     for (const field of fields) {
@@ -135,6 +164,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         ReturnValues: 'ALL_NEW',
       })
     );
+
+    // 操作履歴を記録（実際に値が変わった場合のみ）
+    if (changes.length > 0) {
+      await recordHistory({
+        event,
+        propertyId,
+        propertyName: (input.name ?? beforeData.name ?? '') as string,
+        action: 'update',
+        changes,
+        actor,
+      });
+    }
 
     // 更新後のデータを取得
     const updatedItem = await client.send(

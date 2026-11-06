@@ -3,11 +3,14 @@ import { DynamoDBClient, PutItemCommand, GetItemCommand } from '@aws-sdk/client-
 import { marshall } from '@aws-sdk/util-dynamodb';
 
 import { resolveTableName } from '../shared/tenantResolver';
+import { getActor, recordHistory } from '../shared/auditLog';
 
 const client = new DynamoDBClient({});
 
 interface PropertyInput {
   propertyId: string;
+  rbs?: string;
+  ownershipType?: string;
   name: string;
   zipcode: string;
   prefecture: string;
@@ -23,8 +26,12 @@ interface PropertyInput {
   area?: number;
   owner?: string;
   staff?: string;
+  siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
+  signboard?: string;
+  price?: string;
+  landUpdateDate?: string;
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -81,6 +88,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     const now = new Date().toISOString();
+    const actor = getActor(event);
     const item = {
       ...input,
       files: {
@@ -92,6 +100,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       },
       createdAt: now,
       updatedAt: now,
+      // 更新者表示・操作履歴用
+      createdBy: actor.userName,
+      createdByUserId: actor.userId,
+      createdByEmail: actor.userEmail,
+      updatedBy: actor.userName,
+      updatedByUserId: actor.userId,
+      updatedByEmail: actor.userEmail,
     };
 
     await client.send(
@@ -100,6 +115,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         Item: marshall(item, { removeUndefinedValues: true }),
       })
     );
+
+    // 操作履歴を記録
+    await recordHistory({
+      event,
+      propertyId: input.propertyId,
+      propertyName: input.name || '',
+      action: 'create',
+      actor,
+    });
 
     return {
       statusCode: 201,
@@ -121,12 +145,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
 function validateInput(input: PropertyInput): string | null {
   if (!input.propertyId) return 'propertyId is required';
-  if (!input.name) return 'name is required';
-  if (!input.zipcode) return 'zipcode is required';
-  if (!input.prefecture) return 'prefecture is required';
-  if (!input.city) return 'city is required';
-  if (!input.address) return 'address is required';
-  if (!input.typeLarge) return 'typeLarge is required';
+  // 物件名・大項目・市区町村・番地・郵便番号・都道府県はすべて任意
+  // （土地など項目が埋まらないデータも登録できるようにするため）
   return null;
 }
 

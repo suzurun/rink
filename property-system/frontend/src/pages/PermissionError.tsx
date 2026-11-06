@@ -48,7 +48,9 @@ export default function PermissionError() {
           {/* ボタン */}
           <div className="space-y-3">
             <button
-              onClick={() => router.push('/properties')}
+              onClick={() => {
+                window.location.href = '/properties';
+              }}
               className="w-full py-3 px-4 text-white bg-blue-600 rounded-lg font-medium hover:bg-blue-700 transition-colors"
             >
               物件一覧に戻る

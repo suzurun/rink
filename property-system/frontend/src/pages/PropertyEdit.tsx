@@ -12,16 +12,20 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams } from 'next/navigation';
 import { getProperty, updateProperty } from '../api/properties';
+import { getFreshIdToken } from '../api/auth';
 import {
   Property,
   TYPE_LARGE_OPTIONS,
   TYPE_MEDIUM_OPTIONS,
   STRUCTURE_OPTIONS,
   LAND_USE_OPTIONS,
+  RBS_OPTIONS,
+  OWNERSHIP_TYPE_OPTIONS,
 } from '../types/property';
+import HomeLogo from '../components/HomeLogo';
 
 // 都道府県リスト
 const PREFECTURES = [
@@ -36,6 +40,8 @@ const PREFECTURES = [
 
 // フォームデータの型
 interface PropertyFormData {
+  rbs: string;
+  ownershipType: string;
   name: string;
   zipcode: string;
   prefecture: string;
@@ -57,6 +63,8 @@ interface PropertyFormData {
 
 // 初期値
 const initialFormData: PropertyFormData = {
+  rbs: '',
+  ownershipType: '',
   name: '',
   zipcode: '',
   prefecture: '',
@@ -77,7 +85,6 @@ const initialFormData: PropertyFormData = {
 };
 
 export default function PropertyEdit() {
-  const router = useRouter();
   const params = useParams();
   
   // URLからIDを取得（静的エクスポート対応）
@@ -106,6 +113,9 @@ export default function PropertyEdit() {
   const [isMobile, setIsMobile] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
+  // 保存完了後など、こちらの意図で画面遷移するときは離脱警告を出さない。
+  // hasChanges の更新は次の再描画まで反映されず、遷移に間に合わないため ref で判定する。
+  const skipUnloadWarningRef = useRef(false);
 
   // モバイル検出
   useEffect(() => {
@@ -121,6 +131,8 @@ export default function PropertyEdit() {
   useEffect(() => {
     if (!hasChanges) return;
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // 保存後の遷移では警告しない
+      if (skipUnloadWarningRef.current) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -142,6 +154,8 @@ export default function PropertyEdit() {
 
           // フォームに初期値を設定
           setFormData({
+            rbs: property.rbs || '',
+            ownershipType: property.ownershipType || '',
             name: property.name || '',
             zipcode: property.zipcode || '',
             prefecture: property.prefecture || '',
@@ -239,15 +253,11 @@ export default function PropertyEdit() {
   // ========================================
   // 住所から緯度経度を取得（Geocoding）
   // ========================================
-  const handleGeocode = async () => {
-    const fullAddress = `${formData.prefecture}${formData.city}${formData.address}`;
-    if (!fullAddress.trim()) {
-      setErrors((prev) => ({ ...prev, address: '住所を入力してください' }));
-      return;
-    }
+  const geocodeFromAddress = useCallback(async (prefecture: string, city: string, address: string) => {
+    const fullAddress = `${prefecture}${city}${address}`;
+    if (!fullAddress.trim()) return;
 
     setGeocoding(true);
-
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&countrycodes=jp`
@@ -261,15 +271,34 @@ export default function PropertyEdit() {
           lng: parseFloat(data[0].lon).toFixed(6),
         }));
         setHasChanges(true);
-      } else {
-        alert('緯度経度が取得できませんでした。手動で入力してください。');
       }
     } catch {
-      alert('緯度経度の取得に失敗しました');
+      // 自動取得失敗は無視
     } finally {
       setGeocoding(false);
     }
+  }, []);
+
+  const handleGeocode = async () => {
+    if (!formData.prefecture || !formData.city.trim() || !formData.address.trim()) {
+      setErrors((prev) => ({ ...prev, address: '住所を入力してください' }));
+      return;
+    }
+    await geocodeFromAddress(formData.prefecture, formData.city, formData.address);
+    if (!formData.lat && !formData.lng) {
+      alert('緯度経度が取得できませんでした。手動で入力してください。');
+    }
   };
+
+  // 住所が揃って緯度経度が未設定なら自動取得
+  useEffect(() => {
+    if (formData.prefecture && formData.city.trim() && formData.address.trim() && !formData.lat && !formData.lng) {
+      const timer = setTimeout(() => {
+        geocodeFromAddress(formData.prefecture, formData.city, formData.address);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [formData.prefecture, formData.city, formData.address, formData.lat, formData.lng, geocodeFromAddress]);
 
   // ========================================
   // バリデーション
@@ -347,6 +376,10 @@ export default function PropertyEdit() {
       submitData.address = formData.address.trim();
       submitData.typeLarge = formData.typeLarge;
 
+      // RBS・物件区分は「空欄に戻す」操作も反映させたいので、空でも必ず送る
+      submitData.rbs = formData.rbs;
+      submitData.ownershipType = formData.ownershipType;
+
       // オプション項目
       if (formData.lat) submitData.lat = parseFloat(formData.lat);
       if (formData.lng) submitData.lng = parseFloat(formData.lng);
@@ -365,9 +398,10 @@ export default function PropertyEdit() {
       // 成功時は詳細画面へ遷移
       alert('物件情報を更新しました');
       setHasChanges(false);
+      skipUnloadWarningRef.current = true;
       const redirectTo = redirectOverride || pendingRedirect || `/properties/${propertyId}`;
       setPendingRedirect(null);
-      router.push(redirectTo);
+      window.location.href = redirectTo;
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : '更新に失敗しました');
     } finally {
@@ -385,7 +419,7 @@ export default function PropertyEdit() {
   // ========================================
   const handleNavigate = (target: string) => {
     if (!hasChanges) {
-      router.push(target);
+      window.location.href = target;
       return;
     }
 
@@ -394,7 +428,9 @@ export default function PropertyEdit() {
       setPendingRedirect(target);
       submitForm(target);
     } else {
-      router.push(target);
+      // 破棄を選んだ後にブラウザの離脱確認まで出すと二重確認になる
+      skipUnloadWarningRef.current = true;
+      window.location.href = target;
     }
   };
 
@@ -414,7 +450,7 @@ export default function PropertyEdit() {
     }
 
     try {
-      const token = localStorage.getItem('idToken');
+      const token = await getFreshIdToken();
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
       const response = await fetch(`${API_BASE_URL}/properties/${propertyId}`, {
@@ -430,7 +466,7 @@ export default function PropertyEdit() {
       }
 
       alert('物件を削除しました');
-      router.push('/properties');
+      window.location.href = '/properties';
     } catch (err) {
       alert(err instanceof Error ? err.message : '削除に失敗しました');
     }
@@ -453,7 +489,9 @@ export default function PropertyEdit() {
             PCでアクセスしてください。
           </p>
           <button
-            onClick={() => router.push(`/properties/${propertyId}`)}
+            onClick={() => {
+              window.location.href = `/properties/${propertyId}`;
+            }}
             className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
           >
             物件詳細に戻る
@@ -485,23 +523,25 @@ export default function PropertyEdit() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-16">
+            <div className="flex items-center gap-3 overflow-x-auto -mx-1 px-1 sm:gap-4 md:overflow-visible md:mx-0 md:px-0">
+              <HomeLogo divider />
               <button
                 onClick={handleCancel}
-                className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+                className="shrink-0 p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-xl font-bold text-slate-800">物件編集</h1>
+                <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap">物件編集</h1>
                 <p className="text-xs text-slate-500">ID: {propertyId}</p>
               </div>
             </div>
             {/* 削除ボタン */}
             <button
               onClick={handleDelete}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
+              className="shrink-0 whitespace-nowrap inline-flex items-center px-4 py-2 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
             >
               <TrashIcon className="w-4 h-4 mr-2" />
               削除
@@ -550,6 +590,28 @@ export default function PropertyEdit() {
                 />
                 <p className="mt-1 text-xs text-slate-500">物件IDは変更できません</p>
               </div>
+
+              {/* 管理先（リンク／RBS。自社土地のときだけ出す。空欄のままで構わない） */}
+              {formData.typeLarge === '自社土地' && (
+                <FormSelect
+                  label="管理先"
+                  name="rbs"
+                  value={formData.rbs}
+                  onChange={handleChange}
+                  options={RBS_OPTIONS}
+                  placeholder="該当しない場合は空欄"
+                />
+              )}
+
+              {/* 物件区分（リンクの物件か、預かりの物件か） */}
+              <FormSelect
+                label="物件区分"
+                name="ownershipType"
+                value={formData.ownershipType}
+                onChange={handleChange}
+                options={OWNERSHIP_TYPE_OPTIONS}
+                placeholder="未定の場合は空欄"
+              />
 
               {/* 物件名 */}
               <FormField

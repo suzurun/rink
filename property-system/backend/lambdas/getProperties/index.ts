@@ -4,7 +4,7 @@
  * 認可: internal / admin（external → 403）
  *
  * Query Parameters:
- * - keyword: string - 名称・住所検索
+ * - keyword: string - 名称・住所・市区町村・所有者・担当者の横断検索
  * - typeLarge: string - 大項目（GSI: name-index）
  * - typeMedium: string - 中項目（GSI: medium-index）
  * - typeSmall: string - 小項目（フィルター）
@@ -35,7 +35,8 @@ import { unmarshall } from '@aws-sdk/util-dynamodb';
 // DynamoDB クライアント初期化
 const client = new DynamoDBClient({});
 
-import { resolveTableName } from '../shared/tenantResolver';
+// 環境変数
+const TABLE_NAME = process.env.TABLE_NAME || 'Properties';
 
 // GSI 名定義
 const GSI_NAME_INDEX = 'name-index'; // PK: typeLarge, SK: name
@@ -76,6 +77,8 @@ interface Property {
   memo?: string;
   createdAt?: string;
   updatedAt?: string;
+  updatedBy?: string;
+  updatedByEmail?: string;
 }
 
 /**
@@ -94,12 +97,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // ========================================
-    // 1.5. テナントごとのテーブル名を解決
-    // ========================================
-    const TABLE_NAME = resolveTableName(event);
-    console.log('Resolved TABLE_NAME:', TABLE_NAME);
-
-    // ========================================
     // 2. クエリパラメータの取得・パース
     // ========================================
     const params = parseQueryParams(event);
@@ -108,7 +105,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // ========================================
     // 3. DynamoDB からデータ取得
     // ========================================
-    let items: Property[] = await fetchProperties(params, TABLE_NAME);
+    let items: Property[] = await fetchProperties(params);
 
     // ========================================
     // 4. 追加フィルター処理
@@ -123,27 +120,37 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // ========================================
     // 6. ページネーション
     // ========================================
+    const qs = event.queryStringParameters || {};
+    const isExport = qs.export === 'true';
+
     const total = items.length;
     const { page, limit } = params;
-    const startIndex = (page - 1) * limit;
-    const paginatedItems = items.slice(startIndex, startIndex + limit);
+    const paginatedItems = isExport
+      ? items
+      : items.slice((page - 1) * limit, page * limit);
 
     // ========================================
-    // 7. レスポンス（一覧用に必要なフィールドのみ）
+    // 7. レスポンス
     // ========================================
-    const responseData = paginatedItems.map((item) => ({
-      propertyId: item.propertyId,
-      name: item.name,
-      prefecture: item.prefecture,
-      city: item.city,
-      address: item.address,
-      typeLarge: item.typeLarge,
-      typeMedium: item.typeMedium,
-      typeSmall: item.typeSmall,
-      staff: item.staff,
-      lat: item.lat,
-      lng: item.lng,
-    }));
+    const responseData = isExport
+      ? paginatedItems
+      : paginatedItems.map((item) => ({
+          propertyId: item.propertyId,
+          name: item.name,
+          prefecture: item.prefecture,
+          city: item.city,
+          address: item.address,
+          typeLarge: item.typeLarge,
+          typeMedium: item.typeMedium,
+          typeSmall: item.typeSmall,
+          staff: item.staff,
+          lat: item.lat,
+          lng: item.lng,
+          // 最終更新者（地図・一覧の表示用。記録が無い旧データは undefined）
+          updatedAt: item.updatedAt,
+          updatedBy: item.updatedBy,
+          updatedByEmail: item.updatedByEmail,
+        }));
 
     return successResponse({
       status: 'success',
@@ -201,7 +208,7 @@ function parseQueryParams(event: APIGatewayProxyEvent): QueryParams {
     staff: qs.staff?.trim() || undefined,
     sortBy: (qs.sortBy as QueryParams['sortBy']) || 'name',
     page: Math.max(1, parseInt(qs.page || '1', 10)),
-    limit: Math.min(100, Math.max(1, parseInt(qs.limit || '20', 10))),
+    limit: Math.max(1, parseInt(qs.limit || '20', 10)),
   };
 }
 
@@ -210,17 +217,22 @@ function parseQueryParams(event: APIGatewayProxyEvent): QueryParams {
  * - GSI を使用した効率的なクエリを優先
  * - 複数条件の場合は最も絞り込める GSI を使用し、残りはフィルター
  */
-async function fetchProperties(params: QueryParams, tableName: string): Promise<Property[]> {
+async function fetchProperties(params: QueryParams): Promise<Property[]> {
   let items: Property[] = [];
 
+  // GSI を使ったクエリ（優先順位: typeLarge > staff > typeMedium）
   if (params.typeLarge) {
-    items = await queryByGSI(GSI_NAME_INDEX, 'typeLarge', params.typeLarge, tableName);
+    // GSI: name-index（PK: typeLarge, SK: name）
+    items = await queryByGSI(GSI_NAME_INDEX, 'typeLarge', params.typeLarge);
   } else if (params.staff) {
-    items = await queryByGSI(GSI_STAFF_INDEX, 'staff', params.staff, tableName);
+    // GSI: staff-index（PK: staff, SK: name）
+    items = await queryByGSI(GSI_STAFF_INDEX, 'staff', params.staff);
   } else if (params.typeMedium) {
-    items = await queryByGSI(GSI_MEDIUM_INDEX, 'typeMedium', params.typeMedium, tableName);
+    // GSI: medium-index（PK: typeMedium, SK: name）
+    items = await queryByGSI(GSI_MEDIUM_INDEX, 'typeMedium', params.typeMedium);
   } else {
-    items = await scanAllProperties(tableName);
+    // GSI を使わない場合は Scan
+    items = await scanAllProperties();
   }
 
   return items;
@@ -232,15 +244,14 @@ async function fetchProperties(params: QueryParams, tableName: string): Promise<
 async function queryByGSI(
   indexName: string,
   pkName: string,
-  pkValue: string,
-  tableName: string
+  pkValue: string
 ): Promise<Property[]> {
   const items: Property[] = [];
   let lastEvaluatedKey: Record<string, any> | undefined;
 
   do {
     const commandInput: QueryCommandInput = {
-      TableName: tableName,
+      TableName: TABLE_NAME,
       IndexName: indexName,
       KeyConditionExpression: '#pk = :pkValue',
       ExpressionAttributeNames: {
@@ -269,13 +280,13 @@ async function queryByGSI(
 /**
  * 全件スキャン（GSI が使えない場合）
  */
-async function scanAllProperties(tableName: string): Promise<Property[]> {
+async function scanAllProperties(): Promise<Property[]> {
   const items: Property[] = [];
   let lastEvaluatedKey: Record<string, any> | undefined;
 
   do {
     const commandInput: ScanCommandInput = {
-      TableName: tableName,
+      TableName: TABLE_NAME,
       ExclusiveStartKey: lastEvaluatedKey,
     };
 
@@ -315,7 +326,8 @@ function applyFilters(items: Property[], params: QueryParams): Property[] {
     filtered = filtered.filter((item) => item.staff === params.staff);
   }
 
-  // キーワード検索（名称・住所・市区町村）
+  // キーワード検索（名称・住所・市区町村・所有者・担当者）
+  // 物件ID と備考は対象外（ID は一覧から辿る運用、備考は無関係な物件が混ざるため）
   if (params.keyword) {
     const keyword = params.keyword.toLowerCase();
     filtered = filtered.filter((item) => {
@@ -325,6 +337,7 @@ function applyFilters(items: Property[], params: QueryParams): Property[] {
         item.city,
         item.prefecture,
         item.owner,
+        item.staff,
       ];
       return searchFields.some(
         (field) => field && field.toLowerCase().includes(keyword)
@@ -423,7 +436,7 @@ function corsHeaders(): Record<string, string> {
   return {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Tenant-Host',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
     'Access-Control-Allow-Methods': 'GET,OPTIONS',
   };
 }

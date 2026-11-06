@@ -16,6 +16,8 @@ import {
   isAuthenticated,
   register,
   confirmRegistration,
+  getRememberLogin,
+  setRememberLogin,
 } from '../../api/auth';
 
 type ViewMode = 'login' | 'newPassword' | 'forgotPassword' | 'confirmReset' | 'register' | 'confirmRegister';
@@ -27,6 +29,8 @@ export default function LoginPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // ログイン状態を保持するか（既定: 保持する）
+  const [rememberLogin, setRememberLoginState] = useState(true);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetCode, setResetCode] = useState('');
@@ -39,6 +43,9 @@ export default function LoginPage() {
 
   // 既にログイン済みかチェック（バックグラウンドで実行）
   useEffect(() => {
+    // 前回の「ログイン状態を保持する」設定を復元
+    setRememberLoginState(getRememberLogin());
+
     const checkAuth = async () => {
       try {
         // クライアントサイドでのみ実行
@@ -46,7 +53,8 @@ export default function LoginPage() {
         
         const authenticated = await isAuthenticated();
         if (authenticated) {
-          router.push('/properties');
+          // ログイン状態を維持したまま開き直したときは地図ビューを表示する
+          router.push('/map');
         }
       } catch (error) {
         console.error('Auth check error:', error);
@@ -66,6 +74,9 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // トークンの保存先を確定させてからログインする
+      setRememberLogin(rememberLogin);
+
       const result = await login(email, password);
 
       if (result.requireNewPassword) {
@@ -74,7 +85,7 @@ export default function LoginPage() {
         setError(null);
       } else if (result.success) {
         // ログイン成功
-        router.push('/properties');
+        router.push('/home');
       } else {
         setError(result.message || 'ログインに失敗しました');
       }
@@ -108,7 +119,7 @@ export default function LoginPage() {
       const result = await confirmNewPassword(newPassword);
 
       if (result.success) {
-        router.push('/properties');
+        router.push('/home');
       } else {
         setError(result.message || 'パスワードの設定に失敗しました');
       }
@@ -274,10 +285,16 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 px-4">
       <div className="w-full max-w-md">
-        {/* ロゴ・タイトル */}
+        {/* ロゴ・タイトル（ログイン前は戻る先が無いためリンクにしない） */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <BuildingIcon className="w-9 h-9 text-white" />
+          {/* 背景のグラデーションに沈まないよう、白いプレートに載せる */}
+          <div className="inline-flex items-center justify-center bg-white rounded-2xl shadow-sm px-6 py-4 mb-5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/rink-logo.png"
+              alt="株式会社リンク Keep Next Innovation Ring"
+              className="h-8 sm:h-9 w-auto"
+            />
           </div>
           <h1 className="text-2xl font-bold text-slate-800">物件管理システム</h1>
           <p className="text-sm text-slate-500 mt-1">施工情報管理システム</p>
@@ -317,6 +334,25 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 autoComplete="current-password"
               />
+
+              {/* ログイン状態の保持 */}
+              <div className="flex items-start gap-2">
+                <input
+                  id="rememberLogin"
+                  type="checkbox"
+                  checked={rememberLogin}
+                  onChange={(e) => setRememberLoginState(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                />
+                <label htmlFor="rememberLogin" className="text-sm text-slate-700 cursor-pointer">
+                  ログイン状態を保持する
+                  <span className="block text-xs text-slate-500 mt-0.5">
+                    {rememberLogin
+                      ? 'ブラウザを閉じても最長30日間ログインしたままになります'
+                      : 'ブラウザを閉じるとログアウトします（共用パソコン向け）'}
+                  </span>
+                </label>
+              </div>
 
               {/* ログインボタン */}
               <SubmitButton loading={loading} text="ログイン" loadingText="ログイン中..." />
@@ -642,21 +678,42 @@ function FormInput({
   placeholder,
   autoComplete,
 }: FormInputProps) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
+  const inputType = isPassword && showPassword ? 'text' : type;
+
   return (
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-slate-700 mb-1.5">
         {label}
       </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required
-        autoComplete={autoComplete}
-        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
-        placeholder={placeholder}
-      />
+      <div className="relative">
+        <input
+          id={id}
+          type={inputType}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required
+          autoComplete={autoComplete}
+          className={`w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow ${isPassword ? 'pr-12' : ''}`}
+          placeholder={placeholder}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+            tabIndex={-1}
+            aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+          >
+            {showPassword ? (
+              <EyeOffIcon className="w-5 h-5" />
+            ) : (
+              <EyeIcon className="w-5 h-5" />
+            )}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -705,15 +762,19 @@ function SuccessMessage({ message }: { message: string }) {
   );
 }
 
-function BuildingIcon({ className }: { className?: string }) {
+function EyeIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-      />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+  );
+}
+
+function EyeOffIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
     </svg>
   );
 }

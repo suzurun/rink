@@ -16,8 +16,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProperties } from '../api/properties';
+import { getFreshIdToken } from '../api/auth';
 import { PropertyListItem, PropertySearchParams } from '../types/property';
 import { PROPERTY_CATEGORIES } from '../config/propertyCategories';
+import HomeLogo from '../components/HomeLogo';
 
 // Google Maps API Key（環境変数から取得）
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -77,6 +79,9 @@ export default function MapView() {
   const [typeMedium, setTypeMedium] = useState('');
   const [keyword, setKeyword] = useState('');
 
+  // カテゴリセグメント（複数選択可能、空=全表示）
+  const [activeCategories, setActiveCategories] = useState<Set<string>>(new Set());
+
   // 選択中の物件
   const [selectedProperty, setSelectedProperty] = useState<PropertyListItem | null>(null);
 
@@ -85,16 +90,43 @@ export default function MapView() {
     ? LEGEND_DEFINITIONS.find((item) => item.type === typeLarge)?.mediumOptions || []
     : [];
 
+  // カテゴリトグル
+  const toggleCategory = useCallback((category: string) => {
+    setActiveCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearCategories = useCallback(() => {
+    setActiveCategories(new Set());
+  }, []);
+
+  // カテゴリでフィルターした物件リスト
+  const filteredProperties = useMemo(() => {
+    if (activeCategories.size === 0) return properties;
+    return properties.filter((p) => activeCategories.has(p.typeLarge));
+  }, [properties, activeCategories]);
+
   // ========================================
   // 認証チェック（未ログインはログインへ誘導）
   // ========================================
   useEffect(() => {
-    const token = localStorage.getItem('idToken');
-    if (!token) {
-      router.push('/login?redirect=/map');
-      return;
-    }
-    setIsAuthenticated(true);
+    const checkAuth = async () => {
+      // 保存済みトークンは 1 時間で切れるため、セッションから取り直して判定する
+      const token = await getFreshIdToken();
+      if (!token) {
+        router.push('/login?redirect=/map');
+        return;
+      }
+      setIsAuthenticated(true);
+    };
+    checkAuth();
   }, [router]);
 
   // ========================================
@@ -170,7 +202,7 @@ export default function MapView() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchProperties();
+    fetchProperties();
     }
   }, [fetchProperties, isAuthenticated]);
 
@@ -300,14 +332,14 @@ export default function MapView() {
     markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = [];
 
-    if (properties.length === 0) return;
+    if (filteredProperties.length === 0) return;
 
     const bounds = new google.maps.LatLngBounds();
 
     const currentZoom = mapRef.current?.getZoom() ?? DEFAULT_ZOOM;
     const isMobile = window.innerWidth < LEGEND_COLLAPSE_BREAKPOINT;
 
-    properties.forEach((property) => {
+    filteredProperties.forEach((property) => {
       if (!property.lat || !property.lng) return;
 
       const position = { lat: property.lat, lng: property.lng };
@@ -352,7 +384,7 @@ export default function MapView() {
     });
 
     // 全マーカーが見えるようにズーム調整
-    if (properties.length > 0) {
+    if (filteredProperties.length > 0) {
       mapRef.current.fitBounds(bounds);
 
       // ズームが近すぎる場合は調整
@@ -364,7 +396,7 @@ export default function MapView() {
         google.maps.event.removeListener(listener);
       });
     }
-  }, [properties, loading, router, isAuthenticated]);
+  }, [filteredProperties, loading, router, isAuthenticated]);
 
   // ========================================
   // ズーム変更時にマーカーサイズを更新
@@ -385,6 +417,7 @@ export default function MapView() {
   // ========================================
   const createInfoWindowContent = (property: PropertyListItem): string => {
     const color = MARKER_COLORS[property.typeLarge] || MARKER_COLORS['その他'];
+    const updatedBy = formatUpdatedBy(property);
     return `
       <div style="min-width: 200px; font-family: system-ui, sans-serif;">
         <h3 style="margin: 0 0 8px; font-size: 16px; font-weight: 600; color: #1e293b;">
@@ -406,6 +439,11 @@ export default function MapView() {
         ${property.staff ? `
           <p style="margin: 4px 0 8px; font-size: 12px; color: #94a3b8;">
             担当: ${escapeHtml(property.staff)}
+          </p>
+        ` : ''}
+        ${updatedBy ? `
+          <p style="margin: 4px 0 8px; font-size: 12px; color: #94a3b8;">
+            最終更新: ${escapeHtml(updatedBy)}${property.updatedAt ? `（${escapeHtml(formatDateTime(property.updatedAt))}）` : ''}
           </p>
         ` : ''}
         <button
@@ -448,25 +486,27 @@ export default function MapView() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200 z-20">
         <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 md:h-16">
-            <div className="flex items-center gap-3">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-14">
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 md:gap-3 md:overflow-visible md:mx-0 md:px-0">
+              <HomeLogo divider />
               <button
-                onClick={() => router.push('/properties')}
-                className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                onClick={() => { window.location.href = '/properties'; }}
+                className="shrink-0 p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
-              <h1 className="text-lg md:text-xl font-bold text-slate-800">地図ビュー</h1>
-              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-full">
-                {properties.length} 件
+              <h1 className="text-lg md:text-xl font-bold text-slate-800 whitespace-nowrap">地図ビュー</h1>
+              <span className="shrink-0 whitespace-nowrap hidden sm:inline-flex items-center px-2.5 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-full">
+                {filteredProperties.length} 件
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 md:overflow-visible md:mx-0 md:px-0">
               {/* 一覧ビュー切替 */}
               <button
-                onClick={() => router.push('/properties')}
-                className="inline-flex items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                onClick={() => { window.location.href = '/properties'; }}
+                className="shrink-0 whitespace-nowrap inline-flex items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <ListIcon className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">一覧</span>
@@ -488,6 +528,49 @@ export default function MapView() {
           </div>
         </div>
       </header>
+
+      {/* カテゴリセグメントバー */}
+      <div className="bg-white border-b border-slate-200 z-10">
+        <div className="px-4 py-2 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+          <button
+            onClick={clearCategories}
+            className={`flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+              activeCategories.size === 0
+                ? 'text-white bg-slate-700 border-slate-700'
+                : 'text-slate-600 bg-white border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            すべて
+          </button>
+          {LEGEND_DEFINITIONS.map((cat) => {
+            const isActive = activeCategories.has(cat.type);
+            const count = properties.filter((p) => p.typeLarge === cat.type).length;
+            return (
+              <button
+                key={cat.type}
+                onClick={() => toggleCategory(cat.type)}
+                className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                  isActive
+                    ? 'text-white border-transparent'
+                    : 'text-slate-600 bg-white border-slate-300 hover:bg-slate-50'
+                }`}
+                style={isActive ? { backgroundColor: cat.color, borderColor: cat.color } : {}}
+              >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: isActive ? '#fff' : cat.color }}
+                />
+                {cat.type}
+                {count > 0 && (
+                  <span className={`text-[10px] ${isActive ? 'text-white/80' : 'text-slate-400'}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* フィルターパネル */}
       {showFilters && (
@@ -612,8 +695,8 @@ export default function MapView() {
           <div className="absolute bottom-4 left-4 bg-white rounded-xl shadow-lg border border-slate-200 p-3 z-10">
             <div className="flex items-center justify-between gap-3 mb-2">
               <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                凡例
-              </h3>
+              凡例
+            </h3>
               {isSmallScreen && (
                 <button
                   onClick={() => setIsLegendCollapsed((prev) => !prev)}
@@ -631,17 +714,17 @@ export default function MapView() {
                     ズーム {LEGEND_SIMPLIFIED_ZOOM_THRESHOLD}+：主要カテゴリのみ表示
                   </p>
                 )}
-                <div className="space-y-1.5">
+            <div className="space-y-1.5">
                   {legendItems.map((item) => (
                     <div key={item.type} className="flex items-center gap-2">
-                      <span
+                  <span
                         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                         style={{ backgroundColor: item.color }}
-                      />
+                  />
                       <span className="text-sm text-slate-700">{item.type}</span>
-                    </div>
-                  ))}
                 </div>
+              ))}
+            </div>
               </>
             )}
           </div>
@@ -651,13 +734,13 @@ export default function MapView() {
         {mapLoaded && !mapError && (
           <div className="absolute top-4 left-4 sm:hidden bg-white rounded-lg shadow-md px-3 py-1.5 z-10">
             <span className="text-sm font-medium text-slate-700">
-              {properties.length} 件
+              {filteredProperties.length} 件
             </span>
           </div>
         )}
 
         {/* 位置情報がない物件の通知 */}
-        {mapLoaded && !loading && properties.length === 0 && !error && (
+        {mapLoaded && !loading && filteredProperties.length === 0 && !error && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 z-10">
             <p className="text-sm text-yellow-700">
               表示できる物件がありません（緯度経度が設定された物件のみ表示）
@@ -696,6 +779,12 @@ export default function MapView() {
                   </span>
                 )}
               </div>
+              {formatUpdatedBy(selectedProperty) && (
+                <p className="text-xs text-slate-500 mt-1 truncate">
+                  最終更新: {formatUpdatedBy(selectedProperty)}
+                  {selectedProperty.updatedAt && `（${formatDateTime(selectedProperty.updatedAt)}）`}
+                </p>
+              )}
             </div>
             <button
               onClick={() => router.push(`/properties/${selectedProperty.propertyId}`)}
@@ -719,6 +808,27 @@ export default function MapView() {
 // ========================================
 // ヘルパー関数
 // ========================================
+/**
+ * 最終更新者の表示名
+ * 名前が記録されていない場合はメールアドレスを出す（どちらも無ければ非表示）
+ */
+function formatUpdatedBy(property: PropertyListItem): string {
+  return property.updatedBy || property.updatedByEmail || '';
+}
+
+function formatDateTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return isoStr;
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
