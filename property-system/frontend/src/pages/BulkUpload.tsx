@@ -41,6 +41,7 @@ const CSV_HEADERS = [
   'area',
   'owner',
   'staff',
+  'siteStaff',
   'deliveryDate',
   'memo',
 ];
@@ -65,6 +66,7 @@ const CSV_HEADERS_JP = [
   '面積',
   '施主',
   '担当者',
+  '現場担当者',
   '引渡時期',
   '備考',
 ];
@@ -72,6 +74,9 @@ const CSV_HEADERS_JP = [
 // アップロード結果の型
 interface UploadResult {
   successCount: number;
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount: number;
   errorCount: number;
   errors?: Array<{
     row: number;
@@ -135,37 +140,14 @@ export default function BulkUpload() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const lines = text.split('\n').filter((line) => line.trim());
-      const rows = lines.slice(0, 6).map((line) => parseCSVLine(line)); // 最初の6行のみ
+      // 備考などセル内の改行で行が崩れないよう、CSV 全体をレコード単位で読む
+      const rows = parseCSVRecords(text.replace(/^\uFEFF/, ''))
+        .filter((r) => r.some((v) => v.trim() !== ''))
+        .slice(0, 6); // 最初の6行のみ
       setPreviewData(rows);
     };
     reader.readAsText(file, 'UTF-8');
   }, []);
-
-  // ========================================
-  // CSVパース（簡易版）
-  // ========================================
-  const parseCSVLine = (line: string): string[] => {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        result.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    result.push(current.trim());
-    return result;
-  };
 
   // ========================================
   // アップロード処理
@@ -219,6 +201,9 @@ export default function BulkUpload() {
 
       setResult({
         successCount: data.successCount || 0,
+        createdCount: data.createdCount ?? data.successCount ?? 0,
+        updatedCount: data.updatedCount || 0,
+        unchangedCount: data.unchangedCount || 0,
         errorCount: data.errorCount || 0,
         errors: data.errors,
         errorFileUrl: data.errorFileUrl,
@@ -238,30 +223,13 @@ export default function BulkUpload() {
     // BOM付きUTF-8でCSVを生成
     const bom = '\uFEFF';
     const headerRow = CSV_HEADERS_JP.join(',');
-    const sampleRow = [
-      'P0001',
-      'RBS',
-      'リンク',
-      '大谷ビル',
-      '8100004',
-      '福岡県',
-      '福岡市中央区',
-      '薬院1-1-1',
-      '33.583000',
-      '130.394000',
-      '工場',
-      '製造',
-      '食品',
-      '第一種住居地域',
-      '木造',
-      '200',
-      '山田太郎',
-      '佐藤',
-      '20231201',
-      'メモ',
-    ].join(',');
+    // 見本：ビル1行・自社土地1行（管理先は自社土地だけの項目なのでビルは空欄）
+    const sampleRows = [
+      ['P0001', '', 'リンク', '大谷ビル', '8100004', '福岡県', '福岡市中央区', '薬院1-1-1', '33.583000', '130.394000', '工場', '製造', '食品', '第一種住居地域', '木造', '200', '山田太郎', '佐藤', '鈴木', '20231201', 'メモ'],
+      ['L0001', 'リンク', '', '', '', '福岡県', '福岡市南区', '大橋1-2-3', '33.560000', '130.427000', '自社土地', '', '', '', '', '150', '', '佐藤', '', '', '概要メモ'],
+    ].map((r) => r.join(','));
 
-    const csvContent = bom + headerRow + '\n' + sampleRow + '\n';
+    const csvContent = bom + headerRow + '\n' + sampleRows.join('\n') + '\n';
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
 
@@ -623,10 +591,18 @@ export default function BulkUpload() {
             </h2>
 
             {/* サマリー */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-4 gap-4 mb-6">
               <div className="bg-green-50 rounded-lg p-4 text-center">
-                <p className="text-3xl font-bold text-green-600">{result.successCount}</p>
-                <p className="text-sm text-green-700 mt-1">成功</p>
+                <p className="text-3xl font-bold text-green-600">{result.createdCount}</p>
+                <p className="text-sm text-green-700 mt-1">新規登録</p>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-4 text-center">
+                <p className="text-3xl font-bold text-blue-600">{result.updatedCount}</p>
+                <p className="text-sm text-blue-700 mt-1">上書き</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-4 text-center">
+                <p className="text-3xl font-bold text-slate-500">{result.unchangedCount}</p>
+                <p className="text-sm text-slate-600 mt-1">変更なし</p>
               </div>
               <div className="bg-red-50 rounded-lg p-4 text-center">
                 <p className="text-3xl font-bold text-red-600">{result.errorCount}</p>
@@ -674,7 +650,8 @@ export default function BulkUpload() {
             {result.successCount > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <p className="text-sm text-green-700">
-                  {result.successCount}件の物件を登録しました。
+                  {result.createdCount > 0 && `${result.createdCount}件を新規登録しました。`}
+                  {result.updatedCount > 0 && `${result.updatedCount}件を上書きしました。`}
                 </p>
               </div>
             )}
@@ -709,7 +686,8 @@ export default function BulkUpload() {
             <li>• CSVファイルは<strong>UTF-8</strong>形式で保存してください</li>
             <li>• 1行目はヘッダー行として扱われます</li>
             <li>• 必須は<strong>物件ID</strong>のみです（物件名・大項目・住所などは任意）</li>
-            <li>• 既存の物件IDと重複する場合はエラーになります</li>
+            <li>• 登録済みの物件IDは<strong>上書き</strong>されます。値を入れた項目だけ書き換わり、<strong>空欄の項目は今の値のまま</strong>です（CSVで値を消すことはできません）</li>
+            <li>• 書き出したCSVをExcelで保存すると、物件IDの先頭の0（001 → 1）が消えることがあります。その行は新規登録せずエラーにします</li>
             <li>• <strong>管理先</strong> は「リンク」か「RBS」を入力します（未定なら空欄）</li>
             <li>• <strong>物件区分</strong> は「リンク」か「預かり」を入力します（未定なら空欄）</li>
             <li>• 一度に登録できるのは最大1,000件までです</li>
@@ -826,8 +804,50 @@ function DesktopIcon({ className }: { className?: string }) {
   );
 }
 
+// ========================================
+// CSV パース（引用符・セル内改行・CRLF 対応）
+// ========================================
+function parseCSVRecords(text: string): string[][] {
+  const records: string[][] = [];
+  let record: string[] = [];
+  let current = '';
+  let inQuotes = false;
 
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
 
+    if (inQuotes) {
+      if (char === '"' && text[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        current += char;
+      }
+      continue;
+    }
 
+    if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',' || char === '\t') {
+      record.push(current.trim());
+      current = '';
+    } else if (char === '\r' || char === '\n') {
+      if (char === '\r' && text[i + 1] === '\n') i++;
+      record.push(current.trim());
+      records.push(record);
+      record = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
 
+  if (current !== '' || record.length > 0) {
+    record.push(current.trim());
+    records.push(record);
+  }
 
+  return records;
+}
