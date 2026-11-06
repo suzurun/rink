@@ -633,6 +633,37 @@ export default function PropertyTable() {
     return sortedRows.filter((r) => r.typeLarge === categoryFilter);
   }, [sortedRows, categoryFilter]);
 
+  // 今画面に出ている表を、列名・並び・絞り込みのまま CSV にする（書き込みはしない）
+  const exportVisibleTableCsv = useCallback(() => {
+    const escapeCsv = (value: string) => {
+      if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    };
+    const headers = ['#', ...activeColumns.map((c) => c.label)];
+    const dataRows = visibleRows.map((row, i) => [
+      String(i + 1),
+      ...activeColumns.map((col) => {
+        const val = row[col.key];
+        if (val == null) return '';
+        return String(val);
+      }),
+    ]);
+    const csv = '\uFEFF' + [headers, ...dataRows].map((r) => r.map(escapeCsv).join(',')).join('\n') + '\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const tabName = categoryFilter === '自社土地' ? '自社土地' : 'すべて';
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `テーブル_${tabName}_${today}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [activeColumns, visibleRows, categoryFilter]);
+
   // 自社土地の未保存件数（土地専用保存ボタンの活性判定用）
   const landDirtyCount = useMemo(
     () => Array.from(dirtyRows).filter((id) => rows.find((r) => r.propertyId === id)?.typeLarge === '自社土地').length,
@@ -957,9 +988,19 @@ export default function PropertyTable() {
             </div>
 
             {readOnly ? (
-              <span className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-1.5 text-xs font-medium text-slate-500 bg-slate-100 rounded-lg self-start md:self-auto">
-                閲覧のみ（編集はPCから）
-              </span>
+              <div className="flex items-center gap-2 self-start md:self-auto">
+                <button
+                  onClick={exportVisibleTableCsv}
+                  disabled={loading || visibleRows.length === 0}
+                  className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ExportIcon className="w-4 h-4 mr-1.5" />
+                  CSV出力
+                </button>
+                <span className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-1.5 text-xs font-medium text-slate-500 bg-slate-100 rounded-lg">
+                  閲覧のみ（編集はPCから）
+                </span>
+              </div>
             ) : (
             <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 md:overflow-visible md:mx-0 md:px-0">
               {(dirtyRows.size > 0 || pendingDeleteIds.size > 0) && (
@@ -968,6 +1009,14 @@ export default function PropertyTable() {
                   {pendingDeleteIds.size > 0 && `（削除 ${pendingDeleteIds.size} 件）`}
                 </span>
               )}
+              <button
+                onClick={exportVisibleTableCsv}
+                disabled={loading || visibleRows.length === 0}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ExportIcon className="w-4 h-4 mr-1.5" />
+                CSV出力
+              </button>
               <button
                 onClick={() => setShowLandImport(true)}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-amber-700 rounded-lg hover:bg-amber-800 transition-colors"
@@ -1347,6 +1396,14 @@ function TrashIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  );
+}
+
+function ExportIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
     </svg>
   );
 }
