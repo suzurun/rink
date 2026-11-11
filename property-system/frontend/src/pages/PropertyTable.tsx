@@ -376,7 +376,11 @@ export default function PropertyTable() {
     // 1行目が列名（座標数値を含まない見出し）なら見出し行とみなす
     const isHeaderRow = hasNames && !hasCoordNumber;
 
-    let idx: { mng: number; addr: number; name: number; area: number; staff: number; memo: number; lat: number; lng: number };
+    // 各項目の列番号（-1＝その列が無い）。管理先・看板・金額・更新日は見出し行があるときだけ読む
+    let idx: {
+      mng: number; addr: number; name: number; area: number; staff: number; memo: number; lat: number; lng: number;
+      rbs: number; signboard: number; price: number; landUpdate: number;
+    };
 
     if (isHeaderRow) {
       const header = firstLine.split('\t').map((h) => h.trim().replace(/[\s　]/g, ''));
@@ -386,12 +390,16 @@ export default function PropertyTable() {
         mng: find('管理番号'), addr: find('所在地', '住所', '番地'), name: find('通称', '物件名'),
         area: find('面積'), staff: find('担当者', '担当'), memo: find('概要', '備考'),
         lat: find('緯度'), lng: find('経度'),
+        rbs: find('管理先'), signboard: find('看板'), price: find('金額'), landUpdate: find('更新日'),
       };
     } else {
       // 見出し無し → 元Excelの並び（管理番号,所在地,通称,面積,担当,概要,…,緯度,経度）
-      // 緯度・経度は末尾2列とみなす
+      // 緯度・経度は末尾2列とみなす。管理先などの列は見出しが無いので読まない
       const n = firstLine.split('\t').length;
-      idx = { mng: 0, addr: 1, name: 2, area: 3, staff: 4, memo: 5, lat: n - 2, lng: n - 1 };
+      idx = {
+        mng: 0, addr: 1, name: 2, area: 3, staff: 4, memo: 5, lat: n - 2, lng: n - 1,
+        rbs: -1, signboard: -1, price: -1, landUpdate: -1,
+      };
     }
 
     let maxNum = 0;
@@ -435,6 +443,11 @@ export default function PropertyTable() {
         staff: get(idx.staff) || undefined,
         area: areaStr || undefined, // 面積（坪付きのまま文字列で）
         memo: gaiyo || undefined, // 概要
+        // 見出しの列がある項目は、空欄でも「空欄に変更」として値を持たせる（undefined＝列なし）
+        rbs: idx.rbs >= 0 ? get(idx.rbs) : undefined, // 管理先
+        signboard: idx.signboard >= 0 ? get(idx.signboard) : undefined, // 看板
+        price: idx.price >= 0 ? get(idx.price) : undefined, // 金額
+        landUpdateDate: idx.landUpdate >= 0 ? get(idx.landUpdate) : undefined, // 更新日
       });
     }
     return out;
@@ -469,7 +482,8 @@ export default function PropertyTable() {
       );
 
     if (replace) {
-      // Excelに無い項目（管理先・看板・金額・更新日）は、管理番号が同じ既存の土地から引き継ぐ
+      // 取込データに列が無い項目（管理先・看板・金額・更新日）だけ、管理番号が同じ既存の土地から引き継ぐ
+      // （取込データに列がある場合は、空欄でもその値を採用する）
       const prevByMng = new Map<string, PropertyRow>();
       existingLand.forEach((r) => {
         const mng = (r.typeSmall || '').trim();
@@ -480,10 +494,10 @@ export default function PropertyTable() {
         if (!prev) return r;
         return {
           ...r,
-          rbs: r.rbs || prev.rbs,
-          signboard: r.signboard || prev.signboard,
-          price: r.price || prev.price,
-          landUpdateDate: r.landUpdateDate || prev.landUpdateDate,
+          rbs: r.rbs !== undefined ? r.rbs : prev.rbs,
+          signboard: r.signboard !== undefined ? r.signboard : prev.signboard,
+          price: r.price !== undefined ? r.price : prev.price,
+          landUpdateDate: r.landUpdateDate !== undefined ? r.landUpdateDate : prev.landUpdateDate,
         };
       });
 
@@ -641,9 +655,11 @@ export default function PropertyTable() {
       }
       return value;
     };
-    const headers = ['#', ...activeColumns.map((c) => c.label)];
+    // 物件ID列を先頭に付ける（一括登録で読み戻せるようにするため。表示には無い列）
+    const headers = ['#', '物件ID', ...activeColumns.map((c) => c.label)];
     const dataRows = visibleRows.map((row, i) => [
       String(i + 1),
+      String(row.propertyId ?? ''),
       ...activeColumns.map((col) => {
         const val = row[col.key];
         if (val == null) return '';

@@ -91,6 +91,9 @@ interface PropertyRow {
   siteStaff?: string;
   deliveryDate?: string;
   memo?: string;
+  signboard?: string; // 看板（自社土地）
+  price?: string; // 金額（自社土地）
+  landUpdateDate?: string; // 更新日（自社土地・手入力）
 }
 
 // CSVヘッダー定義
@@ -116,6 +119,9 @@ const CSV_HEADERS = [
   'siteStaff',
   'deliveryDate',
   'memo',
+  'signboard',
+  'price',
+  'landUpdateDate',
 ];
 
 /**
@@ -404,6 +410,14 @@ function mapJapaneseHeader(header: string): string | null {
     address: 'address',
     '番地': 'address',
     '住所': 'address',
+    // テーブルのCSV出力（自社土地）の見出し
+    '所在地': 'address',
+    '管理番号': 'typeSmall',
+    '通称': 'name',
+    '概要': 'memo',
+    '看板': 'signboard',
+    '金額': 'price',
+    '更新日': 'landUpdateDate',
     lat: 'lat',
     '緯度': 'lat',
     lng: 'lng',
