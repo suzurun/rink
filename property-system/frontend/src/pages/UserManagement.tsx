@@ -14,8 +14,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { isAdmin, getIdToken, getFreshIdToken } from '../api/auth';
+import HomeLogo from '../components/HomeLogo';
 
 // API ベース URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -42,8 +42,6 @@ interface User {
 type ModalType = 'invite' | 'editGroup' | 'confirm' | null;
 
 export default function UserManagement() {
-  const router = useRouter();
-
   // State
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,11 +77,11 @@ export default function UserManagement() {
       setCheckingPermission(false);
 
       if (!admin) {
-        router.push('/permission-error');
+        window.location.href = '/permission-error';
       }
     };
     checkPermission();
-  }, [router]);
+  }, []);
 
   // ========================================
   // ユーザー一覧取得
@@ -326,22 +324,26 @@ export default function UserManagement() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-16">
+            <div className="flex items-center gap-3 overflow-x-auto -mx-1 px-1 sm:gap-4 md:overflow-visible md:mx-0 md:px-0">
+              <HomeLogo divider />
               <button
-                onClick={() => router.push('/properties')}
-                className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+                onClick={() => {
+                  window.location.href = '/properties';
+                }}
+                className="shrink-0 p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
-              <h1 className="text-xl font-bold text-slate-800">ユーザー管理</h1>
-              <span className="px-2.5 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">
+              <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap">ユーザー管理</h1>
+              <span className="shrink-0 whitespace-nowrap px-2.5 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">
                 管理者専用
               </span>
             </div>
             <button
               onClick={() => setModalType('invite')}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              className="shrink-0 whitespace-nowrap inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
             >
               <PlusIcon className="w-4 h-4 mr-2" />
               ユーザーを招待
@@ -458,6 +460,11 @@ export default function UserManagement() {
             </div>
           )}
         </div>
+
+        <p className="mt-3 text-xs text-slate-500">
+          最終ログインは、ログイン記録の仕組みを入れた日以降のサインインから記録されます。
+          それ以前のログインは記録が残っていないため「記録なし」と表示されます。
+        </p>
       </main>
 
       {/* 招待モーダル */}
@@ -653,9 +660,11 @@ function UserRow({ user, onEditGroup, onToggleStatus, onDelete }: UserRowProps) 
         <StatusBadge status={user.status} />
       </td>
       <td className="px-6 py-4 text-sm text-slate-500">
-        {user.lastLogin
-          ? new Date(user.lastLogin).toLocaleDateString('ja-JP')
-          : '未ログイン'}
+        {user.lastLogin ? (
+          formatLoginTime(user.lastLogin)
+        ) : (
+          <span className="text-slate-400">記録なし</span>
+        )}
       </td>
       <td className="px-6 py-4 text-right">
         <div className="flex justify-end gap-2">
@@ -892,8 +901,18 @@ function CloseIcon({ className }: { className?: string }) {
   );
 }
 
+/**
+ * 最終ログイン日時の表示（今日ログインしたかが分かるよう時刻まで出す）
+ */
+function formatLoginTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return isoStr;
 
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
 
-
-
-
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
+}

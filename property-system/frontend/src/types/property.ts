@@ -17,20 +17,31 @@ export interface PropertyListItem {
   staff?: string;
   lat?: number;
   lng?: number;
+  // 最終更新の記録（地図や一覧でも更新者を出すため一覧APIでも返す）
+  updatedAt?: string;
+  updatedBy?: string;
+  updatedByEmail?: string;
 }
 
 // 物件詳細用（完全版）
 export interface Property extends PropertyListItem {
+  // 管理先（'リンク' か 'RBS'。未記入は空欄）。項目名は旧「RBS」列の名残で rbs のまま
+  rbs?: string;
+  // 物件区分（リンクの物件か、預かりの物件か）
+  ownershipType?: string;
+  siteStaff?: string;
   zipcode: string;
   landUse?: string;
   structure?: string;
-  area?: number;
+  area?: number | string;
   owner?: string;
   deliveryDate?: string;
   memo?: string;
   files?: PropertyFiles;
   createdAt?: string;
-  updatedAt?: string;
+  // 登録者（更新者は PropertyListItem 側で定義）
+  createdBy?: string;
+  createdByEmail?: string;
 }
 
 // ファイル一覧
@@ -67,6 +78,12 @@ export interface PropertyDetailResponse {
   status: 'success' | 'error';
   data: Property;
 }
+
+// 管理先の選択肢（空欄＝未記入）
+export const RBS_OPTIONS = ['リンク', 'RBS'];
+
+// 物件区分の選択肢（空欄＝未記入）
+export const OWNERSHIP_TYPE_OPTIONS = ['リンク', '預かり'];
 
 // 大項目・中項目の選択肢
 export const TYPE_LARGE_OPTIONS = PROPERTY_CATEGORIES.map((item) => item.type);
