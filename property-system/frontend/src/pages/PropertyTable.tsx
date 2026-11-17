@@ -9,7 +9,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getPropertiesForExport, updateProperty, createProperty, deleteProperty } from '../api/properties';
+import { getPropertiesForExport, updateProperty, createProperty, deleteProperty, getPropertyFiles } from '../api/properties';
 import { PROPERTY_CATEGORIES } from '../config/propertyCategories';
 import { RBS_OPTIONS } from '../types/property';
 import HomeLogo from '../components/HomeLogo';
@@ -467,74 +467,131 @@ export default function PropertyTable() {
     });
   };
 
-  // 解析済みの行をテーブルに反映（既存の自社土地を洗い替え or 追加）
-  const importParsedLand = (parsed: PropertyRow[]) => {
-    const existingLand = rows.filter((r) => r.typeLarge === '自社土地');
-
-    // 既存の自社土地がある場合は「置き換え（洗い替え）」か「追加」かを確認
-    // OK＝今回の取込分だけにする（既存はDBからも削除） / キャンセル＝従来どおり追加
-    const replace =
-      existingLand.length === 0 ||
-      window.confirm(
-        `既存の自社土地 ${existingLand.length} 件を、取り込む ${parsed.length} 件で置き換えますか？\n\n` +
-          `［OK］今回取り込む ${parsed.length} 件だけにする（既存の自社土地は保存時に削除されます）\n` +
-          `［キャンセル］既存を残して追加する`
+  // 削除前の確認用：DB既存の物件について添付ファイル数を数える（読み取りのみ・保存はしない）
+  const countAttachedFiles = async (ids: string[]) => {
+    let files = 0;
+    let props = 0;
+    let failed = 0;
+    const BATCH = 10;
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const chunk = ids.slice(i, i + BATCH);
+      const results = await Promise.all(
+        chunk.map(async (id) => {
+          try {
+            const res = await getPropertyFiles(id);
+            if (res.status !== 'success') return null;
+            return Object.values(res.data).reduce((sum, arr) => sum + arr.length, 0);
+          } catch {
+            return null;
+          }
+        })
       );
-
-    if (replace) {
-      // 取込データに列が無い項目（管理先・看板・金額・更新日）だけ、管理番号が同じ既存の土地から引き継ぐ
-      // （取込データに列がある場合は、空欄でもその値を採用する）
-      const prevByMng = new Map<string, PropertyRow>();
-      existingLand.forEach((r) => {
-        const mng = (r.typeSmall || '').trim();
-        if (mng && !prevByMng.has(mng)) prevByMng.set(mng, r);
+      results.forEach((n) => {
+        if (n === null) {
+          failed += 1;
+        } else {
+          files += n;
+          if (n > 0) props += 1;
+        }
       });
-      parsed = parsed.map((r) => {
-        const prev = prevByMng.get((r.typeSmall || '').trim());
-        if (!prev) return r;
-        return {
-          ...r,
-          rbs: r.rbs !== undefined ? r.rbs : prev.rbs,
-          signboard: r.signboard !== undefined ? r.signboard : prev.signboard,
-          price: r.price !== undefined ? r.price : prev.price,
-          landUpdateDate: r.landUpdateDate !== undefined ? r.landUpdateDate : prev.landUpdateDate,
-        };
-      });
-
-      // DB由来（新規行でない）の既存土地IDは、保存時にDBから削除する
-      const removedDbIds = existingLand
-        .filter((r) => !newRowIds.has(r.propertyId))
-        .map((r) => r.propertyId);
-
-      // 画面からは既存の自社土地を全て外し、取り込んだ行だけを先頭に置く
-      setRows((prev) => [...parsed, ...prev.filter((r) => r.typeLarge !== '自社土地')]);
-      setNewRowIds((s) => {
-        const n = new Set(s);
-        existingLand.forEach((r) => n.delete(r.propertyId)); // 画面から消える古い土地行
-        parsed.forEach((r) => n.add(r.propertyId));
-        return n;
-      });
-      setDirtyRows((d) => {
-        const n = new Set(d);
-        existingLand.forEach((r) => n.delete(r.propertyId));
-        parsed.forEach((r) => n.add(r.propertyId));
-        return n;
-      });
-      setPendingDeleteIds((s) => {
-        const n = new Set(s);
-        removedDbIds.forEach((id) => n.add(id));
-        return n;
-      });
-    } else {
-      // 従来どおり既存を残して先頭に追加
-      setRows((prev) => [...parsed, ...prev]);
-      setNewRowIds((s) => { const n = new Set(s); parsed.forEach((r) => n.add(r.propertyId)); return n; });
-      setDirtyRows((d) => { const n = new Set(d); parsed.forEach((r) => n.add(r.propertyId)); return n; });
     }
+    return { files, props, failed };
+  };
+
+  // 削除確認に添える添付ファイルの注意文（先頭に空行を入れる。添付が無ければ空文字）
+  const attachedWarning = (c: { files: number; props: number; failed: number }) => {
+    if (c.failed > 0) {
+      const found = c.files > 0 ? `確認できた分では添付ファイル ${c.files} 件（${c.props} 件の物件）があります。\n` : '';
+      return `\n\n⚠ ${c.failed} 件は添付ファイルの有無を確認できませんでした。\n${found}添付ファイルも一緒に削除される可能性があります。`;
+    }
+    if (c.files === 0) return '';
+    return `\n\n⚠ 添付ファイルが ${c.files} 件（${c.props} 件の物件）あります。\nこの物件を削除しても添付ファイルは消えずに残りますが、物件に紐づかなくなり、画面では見えなくなります。`;
+  };
+
+  // 取込の照合ルール（作り直しはしない）
+  //  - 取込データの管理番号が空・同じ番号の重複 → 取込を止めて知らせる
+  //  - 既存の土地と管理番号が一致 → 同じ物件IDのまま項目だけ更新（添付ファイルはそのまま）
+  //  - 一致しない → 新しい土地として追加
+  //  - 取込に含まれない既存の土地 → 消さずに残す（不要なら「選択行を削除」で人が消す）
+  // 戻り値：取り込んだら true（取り込めなかったら false・理由は画面に表示）
+  const importParsedLand = (parsed: PropertyRow[]): boolean => {
+    // 1. 取込データの管理番号チェック
+    const mngOf = (r: PropertyRow) => (r.typeSmall ?? '').trim();
+    const blank = parsed.filter((r) => !mngOf(r));
+    const parsedCount = new Map<string, number>();
+    parsed.forEach((r) => { const m = mngOf(r); if (m) parsedCount.set(m, (parsedCount.get(m) ?? 0) + 1); });
+    const dupNos = Array.from(parsedCount.entries()).filter(([, n]) => n > 1).map(([m]) => m);
+    if (blank.length > 0 || dupNos.length > 0) {
+      const lines: string[] = [];
+      if (blank.length > 0) lines.push(`・管理番号が空の行：${blank.length} 件（${blank.slice(0, 5).map((r) => r.name || r.address || '(名前なし)').join('、')}）`);
+      if (dupNos.length > 0) lines.push(`・同じ管理番号が複数ある：${dupNos.join('、')}`);
+      const msg = `取り込めませんでした。取込データの管理番号を直してから、もう一度貼り付けてください。\n${lines.join('\n')}`;
+      setSaveError(msg);
+      window.alert(msg);
+      return false;
+    }
+
+    // 2. 既存の土地との照合（既存の同じ管理番号が複数ある場合は、どれに付けるか決められないので止める）
+    const existingLand = rows.filter((r) => r.typeLarge === '自社土地');
+    const byMng = new Map<string, PropertyRow[]>();
+    existingLand.forEach((r) => {
+      const m = mngOf(r);
+      if (!m) return;
+      byMng.set(m, [...(byMng.get(m) ?? []), r]);
+    });
+    const ambiguous = parsed.map(mngOf).filter((m) => (byMng.get(m) ?? []).length > 1);
+    if (ambiguous.length > 0) {
+      const msg = `取り込めませんでした。既存の土地で同じ管理番号が複数あります（${Array.from(new Set(ambiguous)).join('、')}）。先に「要確認の土地」で重複を整理してください。`;
+      setSaveError(msg);
+      window.alert(msg);
+      return false;
+    }
+
+    // 3. 取込データの値を適用（列が無い項目＝undefined は既存の値を残す）
+    const definedOnly = (p: PropertyRow) =>
+      Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) as Partial<PropertyRow>;
+    const updatedById = new Map<string, PropertyRow>();
+    const created: PropertyRow[] = [];
+    let updatedCount = 0;
+    parsed.forEach((p) => {
+      const ex = byMng.get(mngOf(p))?.[0];
+      if (ex) {
+        updatedById.set(ex.propertyId, { ...ex, ...definedOnly(p), propertyId: ex.propertyId } as PropertyRow);
+        updatedCount += 1;
+      } else {
+        created.push(p);
+      }
+    });
+    const matchedIds = new Set(updatedById.keys());
+    const unmatchedExisting = existingLand.filter((r) => !matchedIds.has(r.propertyId)).length;
+
+    setRows((prev) => [
+      ...created,
+      ...prev.map((r) => updatedById.get(r.propertyId) ?? r),
+    ]);
+    setNewRowIds((s) => {
+      const n = new Set(s);
+      created.forEach((r) => n.add(r.propertyId));
+      return n;
+    });
+    setDirtyRows((d) => {
+      const n = new Set(d);
+      updatedById.forEach((_, id) => n.add(id));
+      created.forEach((r) => n.add(r.propertyId));
+      return n;
+    });
 
     setCategoryFilter('自社土地');
     setSortKey('');
     setSaveError(null);
+    window.alert(
+      `取り込みました。\n・既存の土地を更新：${updatedCount} 件（物件IDと添付ファイルはそのまま）\n・新しく追加：${created.length} 件` +
+        (unmatchedExisting > 0
+          ? `\n・取込に含まれない既存の土地：${unmatchedExisting} 件（残しています。不要なものは「選択行を削除」で消してください）`
+          : '') +
+        `\n\n※「保存」を押すと反映されます。`
+    );
+    return true;
   };
 
   // 取込実行（モーダル用）：解析した行を新規行としてテーブルに追加
@@ -544,7 +601,7 @@ export default function PropertyTable() {
       setSaveError('取り込めるデータがありませんでした（見出し行を含めて貼り付けてください）');
       return;
     }
-    importParsedLand(parsed);
+    if (!importParsedLand(parsed)) return; // 取り込めなかった時はモーダルを閉じず、理由を表示したままにする
     setShowLandImport(false);
     setLandImportText('');
   };
@@ -646,6 +703,23 @@ export default function PropertyTable() {
     if (!categoryFilter) return sortedRows;
     return sortedRows.filter((r) => r.typeLarge === categoryFilter);
   }, [sortedRows, categoryFilter]);
+
+  // 要確認の土地（管理番号が空、または同じ管理番号が他にもある）
+  const problemLandRows = useMemo(() => {
+    const land = rows.filter((r) => r.typeLarge === '自社土地');
+    const count = new Map<string, number>();
+    land.forEach((r) => {
+      const m = (r.typeSmall ?? '').trim();
+      if (m) count.set(m, (count.get(m) ?? 0) + 1);
+    });
+    const out: { r: PropertyRow; reason: string }[] = [];
+    land.forEach((r) => {
+      const m = (r.typeSmall ?? '').trim();
+      if (!m) out.push({ r, reason: '管理番号が空' });
+      else if ((count.get(m) ?? 0) > 1) out.push({ r, reason: '管理番号が重複' });
+    });
+    return out;
+  }, [rows]);
 
   // 今画面に出ている表を、列名・並び・絞り込みのまま CSV にする（書き込みはしない）
   const exportVisibleTableCsv = useCallback(() => {
@@ -808,22 +882,18 @@ export default function PropertyTable() {
     setSelectionEnd(null);
   };
 
-  // 選択中の行を削除
-  const deleteSelectedRows = () => {
+  // 選択中の行を削除（一度に1件だけ。一括削除はできない）
+  const deleteSelectedRows = async () => {
     if (readOnly) return; // 閲覧専用モードでは削除不可
     const ids = Array.from(selectedRowIds);
     if (ids.length === 0) return;
-    if (!window.confirm(`選択した ${ids.length} 行を削除します。\n保存すると元に戻せません。よろしいですか？`)) return;
+    if (ids.length > 1) {
+      window.alert('一度に削除できるのは1件までです。1件ずつ削除してください。');
+      return;
+    }
+    const counts = await countAttachedFiles(ids.filter((id) => !newRowIds.has(id)));
+    if (!window.confirm(`この物件を削除します。\n保存すると元に戻せません。${attachedWarning(counts)}\n\nよろしいですか？`)) return;
     removeRows(ids);
-  };
-
-  // 自社土地をすべて削除
-  const deleteAllLand = () => {
-    if (readOnly) return; // 閲覧専用モードでは削除不可
-    const landIds = rows.filter((r) => r.typeLarge === '自社土地').map((r) => r.propertyId);
-    if (landIds.length === 0) return;
-    if (!window.confirm(`自社土地 ${landIds.length} 件をすべて削除します。\n保存すると元に戻せません。よろしいですか？`)) return;
-    removeRows(landIds);
   };
 
   // Excelからのペースト処理
@@ -1054,15 +1124,6 @@ export default function PropertyTable() {
                 >
                   <TrashIcon className="w-4 h-4 mr-1.5" />
                   選択行を削除（{selectedRowIds.size}）
-                </button>
-              )}
-              {categoryFilter === '自社土地' && (
-                <button
-                  onClick={deleteAllLand}
-                  className="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
-                >
-                  <TrashIcon className="w-4 h-4 mr-1.5" />
-                  自社土地を全削除
                 </button>
               )}
               {categoryFilter === '自社土地' && (
@@ -1327,6 +1388,47 @@ export default function PropertyTable() {
             </tbody>
           </table>
           </div>
+
+          {/* 要確認の土地（テーブルの下）：管理番号の入力・重複の確認をここで行う */}
+          {categoryFilter === '自社土地' && problemLandRows.length > 0 && (
+            <div className="flex-shrink-0 border-t-2 border-amber-400 bg-amber-50 px-4 py-2 max-h-60 overflow-auto">
+              <div className="text-sm font-bold text-amber-900">要確認の土地 {problemLandRows.length} 件</div>
+              <p className="text-xs text-amber-800 mb-2">
+                管理番号を入力して、移動してから保存してください。同じ管理番号の行は、どちらか一方を残して「選択行を削除」してください（添付ファイルがあれば削除前に注意が出ます）。
+              </p>
+              <table className="text-xs">
+                <thead>
+                  <tr className="text-left text-amber-900">
+                    <th className="pr-4 pb-1">物件ID</th>
+                    <th className="pr-4 pb-1">通称</th>
+                    <th className="pr-4 pb-1">管理番号</th>
+                    <th className="pb-1">理由</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {problemLandRows.map(({ r, reason }) => (
+                    <tr key={r.propertyId} className="border-t border-amber-200">
+                      <td className="pr-4 py-1">{r.propertyId}</td>
+                      <td className="pr-4">{r.name}</td>
+                      <td className="pr-4">
+                        <input
+                          defaultValue={r.typeSmall ?? ''}
+                          disabled={readOnly}
+                          placeholder="管理番号"
+                          className="border border-amber-300 rounded px-1 py-0.5 w-28 bg-white"
+                          onBlur={(e) => {
+                            const v = e.target.value.trim();
+                            if (v !== (r.typeSmall ?? '')) commitEdit(r.propertyId, 'typeSmall', v);
+                          }}
+                        />
+                      </td>
+                      <td>{reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
 
