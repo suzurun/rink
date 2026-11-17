@@ -20,7 +20,8 @@ import { unmarshall } from '@aws-sdk/util-dynamodb';
 // DynamoDB クライアント初期化
 const client = new DynamoDBClient({});
 
-import { resolveTableName } from '../shared/tenantResolver';
+// 環境変数
+const TABLE_NAME = process.env.TABLE_NAME || 'Properties';
 
 // 物件データの型定義
 interface Property {
@@ -68,9 +69,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return authResult;
     }
 
-    const TABLE_NAME = resolveTableName(event);
-    console.log('Resolved TABLE_NAME:', TABLE_NAME);
-
     // ========================================
     // 2. パスパラメータから propertyId を取得
     // ========================================
@@ -83,7 +81,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // ========================================
     // 3. DynamoDB から物件データを取得
     // ========================================
-    const property = await getPropertyById(propertyId, TABLE_NAME);
+    const property = await getPropertyById(propertyId);
 
     if (!property) {
       return errorResponse(404, '物件が見つかりません');
@@ -134,9 +132,9 @@ function checkAuthorization(event: APIGatewayProxyEvent): APIGatewayProxyResult 
 /**
  * DynamoDB から物件を取得
  */
-async function getPropertyById(propertyId: string, tableName: string): Promise<Property | null> {
+async function getPropertyById(propertyId: string): Promise<Property | null> {
   const command = new GetItemCommand({
-    TableName: tableName,
+    TableName: TABLE_NAME,
     Key: {
       propertyId: { S: propertyId },
     },
@@ -183,7 +181,7 @@ function corsHeaders(): Record<string, string> {
   return {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Tenant-Host',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
     'Access-Control-Allow-Methods': 'GET,OPTIONS',
   };
 }

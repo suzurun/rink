@@ -13,9 +13,10 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { getProperty, getUploadUrl, uploadFileToS3, getPropertyFiles, FileInfo } from '../api/properties';
+import { useParams } from 'next/navigation';
+import { getProperty, getUploadUrl, uploadFileToS3, getPropertyFiles, deleteFile, FileInfo } from '../api/properties';
 import { Property } from '../types/property';
+import HomeLogo from '../components/HomeLogo';
 
 // 1物件あたりの最大ファイル数（カテゴリごと）
 const MAX_FILES_PER_CATEGORY = 50;
@@ -32,7 +33,6 @@ const FILE_TABS: { key: FileType; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function PropertyDetail() {
-  const router = useRouter();
   const params = useParams();
   
   // URLからIDを取得（静的エクスポート対応）
@@ -199,14 +199,43 @@ export default function PropertyDetail() {
   };
 
   // ========================================
+  // ファイル削除
+  // ========================================
+  const handleFileDelete = useCallback(
+    async (file: FileInfo) => {
+      if (!propertyId) return;
+
+      const confirmed = window.confirm(
+        `「${file.name}」を削除しますか？\nこの操作は取り消せません。`
+      );
+      if (!confirmed) return;
+
+      try {
+        await deleteFile(propertyId, file.key);
+        // ファイル一覧を再取得
+        await fetchFiles();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'ファイルの削除に失敗しました');
+      }
+    },
+    [propertyId, fetchFiles]
+  );
+
+  // ========================================
   // イベントハンドラー
   // ========================================
   const handleEdit = () => {
-    router.push(`/properties/${propertyId}/edit`);
+    window.location.href = `/properties/${propertyId}/edit`;
   };
 
   const handleBack = () => {
-    router.push('/properties');
+    // 直前に見ていた一覧（ページ番号・検索条件つき）に戻す。
+    // 履歴が無い場合（ブックマークや直リンクで開いた場合）は一覧の先頭へ。
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.href = '/properties';
   };
 
   const handleOpenMap = () => {
@@ -257,22 +286,24 @@ export default function PropertyDetail() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-16">
+            <div className="flex items-center gap-3 overflow-x-auto -mx-1 px-1 sm:gap-4 md:overflow-visible md:mx-0 md:px-0">
+              <HomeLogo divider />
               <button
                 onClick={handleBack}
-                className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                className="shrink-0 p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
-              <h1 className="text-xl font-bold text-slate-800 truncate max-w-md">
+              <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap truncate max-w-md">
                 {property.name}
               </h1>
             </div>
             {/* 編集ボタン（PCのみ） */}
             <button
               onClick={handleEdit}
-              className="hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              className="shrink-0 whitespace-nowrap hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
             >
               <EditIcon className="w-4 h-4 mr-2" />
               編集
@@ -320,6 +351,7 @@ export default function PropertyDetail() {
             activeFileTab={activeFileTab}
             setActiveFileTab={setActiveFileTab}
             onFileUpload={handleFileUpload}
+            onFileDelete={handleFileDelete}
             uploading={uploading}
             uploadProgress={uploadProgress}
             maxFilesPerCategory={MAX_FILES_PER_CATEGORY}
@@ -339,6 +371,7 @@ interface PropertyInfoTabProps {
 }
 
 function PropertyInfoTab({ property, onOpenMap }: PropertyInfoTabProps) {
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       {/* 所在地セクション */}
@@ -377,6 +410,8 @@ function PropertyInfoTab({ property, onOpenMap }: PropertyInfoTabProps) {
       {/* 物件情報グリッド */}
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
         <InfoItem label="物件ID" value={property.propertyId} />
+        {property.typeLarge === '自社土地' && <InfoItem label="管理先" value={property.rbs} />}
+        <InfoItem label="物件区分" value={property.ownershipType} />
         <InfoItem label="物件名" value={property.name} />
         <InfoItem label="大項目" value={property.typeLarge} highlight />
         <InfoItem label="中項目" value={property.typeMedium} />
@@ -395,14 +430,33 @@ function PropertyInfoTab({ property, onOpenMap }: PropertyInfoTabProps) {
         </div>
       </div>
 
-      {/* メタ情報 */}
+      {/* 更新者・メタ情報 */}
       <div className="px-6 py-4 bg-slate-50 border-t border-slate-100">
-        <div className="flex gap-6 text-xs text-slate-400">
+        {/* 最新の変更を加えたユーザー（機能追加前のデータには記録が無いため非表示） */}
+        {/* 名前が記録されていない場合はメールアドレスを表示する */}
+        {(property.updatedBy || property.updatedByEmail) && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-3">
+            <span className="text-xs font-medium text-slate-500">更新者</span>
+            <span className="text-sm font-semibold text-slate-800">
+              {property.updatedBy || property.updatedByEmail}
+            </span>
+            {property.updatedAt && (
+              <span className="text-sm text-slate-600">
+                {formatDateTime(property.updatedAt)}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
           {property.createdAt && (
-            <span>作成日: {new Date(property.createdAt).toLocaleString('ja-JP')}</span>
+            <span>
+              作成日: {formatDateTime(property.createdAt)}
+              {property.createdBy ? `（${property.createdBy}）` : ''}
+            </span>
           )}
           {property.updatedAt && (
-            <span>更新日: {new Date(property.updatedAt).toLocaleString('ja-JP')}</span>
+            <span>更新日: {formatDateTime(property.updatedAt)}</span>
           )}
         </div>
       </div>
@@ -426,6 +480,7 @@ interface PropertyFilesTabProps {
   activeFileTab: FileType;
   setActiveFileTab: (tab: FileType) => void;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileDelete: (file: FileInfo) => void;
   uploading: boolean;
   uploadProgress: string | null;
   maxFilesPerCategory: number;
@@ -437,6 +492,7 @@ function PropertyFilesTab({
   activeFileTab,
   setActiveFileTab,
   onFileUpload,
+  onFileDelete,
   uploading,
   uploadProgress,
   maxFilesPerCategory,
@@ -539,6 +595,7 @@ function PropertyFilesTab({
                 key={file.key || index}
                 fileInfo={file}
                 fileType={activeFileTab}
+                onDelete={onFileDelete}
               />
             ))}
           </div>
@@ -554,11 +611,18 @@ function PropertyFilesTab({
 interface FileCardProps {
   fileInfo: FileInfo;
   fileType: FileType;
+  onDelete: (file: FileInfo) => void;
 }
 
-function FileCard({ fileInfo, fileType }: FileCardProps) {
+function FileCard({ fileInfo, fileType, onDelete }: FileCardProps) {
   const handleClick = () => {
     window.open(fileInfo.url, '_blank');
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    // カードのクリック（ファイルを開く）を発火させない
+    e.stopPropagation();
+    onDelete(fileInfo);
   };
 
   // ファイルサイズをフォーマット
@@ -575,7 +639,16 @@ function FileCard({ fileInfo, fileType }: FileCardProps) {
       className="group bg-slate-50 rounded-lg border border-slate-200 overflow-hidden cursor-pointer hover:border-blue-300 hover:shadow-md transition-all"
     >
       {/* サムネイル */}
-      <div className="aspect-square bg-slate-100 flex items-center justify-center">
+      <div className="relative aspect-square bg-slate-100 flex items-center justify-center">
+        {/* 削除ボタン */}
+        <button
+          type="button"
+          onClick={handleDelete}
+          title="削除"
+          className="absolute top-1.5 right-1.5 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/90 text-slate-500 shadow-sm opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white transition-all"
+        >
+          <TrashIcon className="w-4 h-4" />
+        </button>
         {fileType === 'photo' ? (
           <img
             src={fileInfo.url}
@@ -648,6 +721,22 @@ function formatZipcode(zipcode?: string): string {
     return `${zipcode.slice(0, 3)}-${zipcode.slice(3)}`;
   }
   return zipcode;
+}
+
+/**
+ * ISO8601 の日時を「2026/08/31 14:20」形式で表示する
+ */
+function formatDateTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return isoStr;
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
 }
 
 function formatDate(dateStr: string): string {
@@ -737,6 +826,14 @@ function FileIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
   );
 }

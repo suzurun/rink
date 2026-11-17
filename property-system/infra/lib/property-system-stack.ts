@@ -49,6 +49,8 @@ export class PropertySystemStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
   public readonly propertiesTable: dynamodb.Table;
+  public readonly historyTable: dynamodb.Table;
+  public readonly userLoginTable: dynamodb.Table;
   public readonly propertyBucket: s3.Bucket;
   public readonly frontendBucket: s3.Bucket;
   public readonly api: apigateway.RestApi;
@@ -241,6 +243,80 @@ export class PropertySystemStack extends cdk.Stack {
     });
 
     // =========================================================================
+    // 2-2. DynamoDB PropertyHistory テーブル（操作履歴）
+    // =========================================================================
+    this.historyTable = new dynamodb.Table(this, 'PropertyHistoryTable', {
+      tableName: `PropertyHistory-${envName}`,
+
+      // キー設計: 物件ごとに時系列で並ぶ（eventId = timestamp#uuid）
+      partitionKey: {
+        name: 'propertyId',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'eventId',
+        type: dynamodb.AttributeType.STRING,
+      },
+
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+
+      // 履歴は監査用途のため、環境を問わず必ず残す
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // GSI: user-index（ユーザー別の操作履歴）
+    this.historyTable.addGlobalSecondaryIndex({
+      indexName: 'user-index',
+      partitionKey: {
+        name: 'userId',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'timestamp',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI: timeline-index（全体の操作ログを時系列で取得）
+    this.historyTable.addGlobalSecondaryIndex({
+      indexName: 'timeline-index',
+      partitionKey: {
+        name: 'gsiPk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'timestamp',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // =========================================================================
+    // 2-3. DynamoDB UserLogin テーブル（最終ログイン日時）
+    //
+    // Cognito にはログイン日時を保持する項目が無い（UserLastModifiedDate は
+    // アカウント情報の変更日であって、ログインしても更新されない）。
+    // PostAuthentication トリガーでサインインのたびにここへ記録する。
+    // =========================================================================
+    this.userLoginTable = new dynamodb.Table(this, 'UserLoginTable', {
+      tableName: `UserLogin-${envName}`,
+
+      // Cognito の Username（sub）を1件1ユーザーで持つ
+      partitionKey: {
+        name: 'userId',
+        type: dynamodb.AttributeType.STRING,
+      },
+
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+
+      // 利用状況の記録なので環境を問わず残す
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // =========================================================================
     // 3. S3 Bucket（物件ファイル保存）
     // =========================================================================
     this.propertyBucket = new s3.Bucket(this, 'PropertyBucket', {
@@ -318,6 +394,8 @@ export class PropertySystemStack extends cdk.Stack {
     // 共通環境変数
     const lambdaEnvironment: Record<string, string> = {
       TABLE_NAME: this.propertiesTable.tableName,
+      HISTORY_TABLE_NAME: this.historyTable.tableName,
+      LOGIN_TABLE_NAME: this.userLoginTable.tableName,
       BUCKET_NAME: this.propertyBucket.bucketName,
       USER_POOL_ID: this.userPool.userPoolId,
       REGION: this.region,
@@ -363,12 +441,33 @@ export class PropertySystemStack extends cdk.Stack {
     const deletePropertyLambda = createLambda('deleteProperty', 'deleteProperty/index.ts');
     const getUploadUrlLambda = createLambda('getUploadUrl', 'getUploadUrl/index.ts');
     const getFilesLambda = createLambda('getFiles', 'getFiles/index.ts');
+    const deleteFileLambda = createLambda('deleteFile', 'deleteFile/index.ts');
+    const getHistoryLambda = createLambda('getHistory', 'getHistory/index.ts');
 
     // bulkUpload（長時間処理のため設定を上書き）
     const bulkUploadLambda = createLambda('bulkUpload', 'bulkUpload/index.ts', {
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,
     });
+
+    // ログイン日時の記録（Cognito PostAuthentication トリガー）
+    //
+    // 環境変数に USER_POOL_ID を入れないこと。
+    // ユーザープールがこの Lambda を参照する（トリガー登録）ため、
+    // Lambda 側からユーザープールを参照すると循環参照になりデプロイできない。
+    // この Lambda は DynamoDB に書くだけなのでユーザープールの情報は不要。
+    const recordLoginLambda = createLambda('recordLogin', 'recordLogin/index.ts', {
+      environment: {
+        LOGIN_TABLE_NAME: this.userLoginTable.tableName,
+        REGION: this.region,
+        NODE_OPTIONS: '--enable-source-maps',
+      },
+    });
+    this.userLoginTable.grantWriteData(recordLoginLambda);
+    this.userPool.addTrigger(
+      cognito.UserPoolOperation.POST_AUTHENTICATION,
+      recordLoginLambda
+    );
 
     // ユーザー管理 Lambda Functions
     const listUsersLambda = createLambda('listUsers', 'listUsers/index.ts');
@@ -400,13 +499,22 @@ export class PropertySystemStack extends cdk.Stack {
       getUploadUrlLambda,
       bulkUploadLambda,
       getFilesLambda,
+      deleteFileLambda,
     ];
 
     // 権限付与（メインテーブル + S3）
     allLambdas.forEach((fn) => {
       this.propertiesTable.grantReadWriteData(fn);
       this.propertyBucket.grantReadWrite(fn);
+      // 操作履歴の書き込み
+      this.historyTable.grantWriteData(fn);
     });
+
+    // 操作ログ参照 Lambda（読み取りのみ）
+    this.historyTable.grantReadData(getHistoryLambda);
+
+    // ユーザー一覧に最終ログイン日時を出すための読み取り権限
+    this.userLoginTable.grantReadData(listUsersLambda);
 
 
 
@@ -503,10 +611,15 @@ export class PropertySystemStack extends cdk.Stack {
     // /properties/{propertyId}/files
     const filesResource = propertyResource.addResource('files');
     filesResource.addMethod('GET', new apigateway.LambdaIntegration(getFilesLambda), authOptions);
+    filesResource.addMethod('DELETE', new apigateway.LambdaIntegration(deleteFileLambda), authOptions);
 
     // /upload-url
     const uploadUrlResource = this.api.root.addResource('upload-url');
     uploadUrlResource.addMethod('POST', new apigateway.LambdaIntegration(getUploadUrlLambda), authOptions);
+
+    // /history（操作ログ - 管理者専用）
+    const historyResource = this.api.root.addResource('history');
+    historyResource.addMethod('GET', new apigateway.LambdaIntegration(getHistoryLambda), authOptions);
 
     // /users（ユーザー管理 - 管理者専用）
     const usersResource = this.api.root.addResource('users');

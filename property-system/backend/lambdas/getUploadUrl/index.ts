@@ -32,6 +32,8 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
+import { recordHistory } from '../shared/auditLog';
+
 // S3 クライアント初期化
 const s3Client = new S3Client({});
 
@@ -90,6 +92,15 @@ const MAX_FILE_SIZES: Record<FileType, number> = {
   pdf: 100 * 1024 * 1024,     // 100MB
   movie: 500 * 1024 * 1024,   // 500MB
   others: 100 * 1024 * 1024,  // 100MB
+};
+
+// 操作履歴の表示用ラベル
+const FILE_TYPE_LABELS: Record<FileType, string> = {
+  photo: '写真',
+  drawing: '図面',
+  pdf: 'PDF',
+  movie: '動画',
+  others: 'その他',
 };
 
 // リクエストボディの型定義
@@ -165,7 +176,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     });
 
     // ========================================
-    // 7. レスポンス
+    // 7. 操作履歴を記録
+    // ========================================
+    // 署名付き URL の発行時点で記録する（実アップロードは S3 へ直接行われるため）
+    await recordHistory({
+      event,
+      propertyId,
+      action: 'fileUpload',
+      detail: `${FILE_TYPE_LABELS[fileType] || fileType}: ${sanitizedFileName}`,
+    });
+
+    // ========================================
+    // 8. レスポンス
     // ========================================
     return successResponse({
       status: 'success',

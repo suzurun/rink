@@ -1,16 +1,12 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient, DeleteItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
-import {
-  S3Client,
-  ListObjectsV2Command,
-  DeleteObjectsCommand,
-} from '@aws-sdk/client-s3';
+
+import { unmarshall } from '@aws-sdk/util-dynamodb';
 
 import { resolveTableName } from '../shared/tenantResolver';
+import { recordHistory } from '../shared/auditLog';
 
 const dynamoClient = new DynamoDBClient({});
-const s3Client = new S3Client({});
-const BUCKET_NAME = process.env.BUCKET_NAME || '';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
@@ -55,10 +51,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       };
     }
 
-    // S3 のファイルを削除
-    if (BUCKET_NAME) {
-      await deleteS3Folder(propertyId);
-    }
+    const beforeData = unmarshall(existingItem.Item);
+
+    // S3 のファイルは削除しない（添付は残す。物件に紐づかなくなるだけ）
 
     // DynamoDB から削除
     await dynamoClient.send(
@@ -69,6 +64,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         },
       })
     );
+
+    // 操作履歴を記録（物件本体が消えても履歴は残る）
+    await recordHistory({
+      event,
+      propertyId,
+      propertyName: (beforeData.name ?? '') as string,
+      action: 'delete',
+    });
 
     return {
       statusCode: 200,
@@ -87,34 +90,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     };
   }
 };
-
-async function deleteS3Folder(propertyId: string): Promise<void> {
-  const prefix = `property/${propertyId}/`;
-
-  // フォルダ内のオブジェクトを一覧取得
-  const listResult = await s3Client.send(
-    new ListObjectsV2Command({
-      Bucket: BUCKET_NAME,
-      Prefix: prefix,
-    })
-  );
-
-  if (!listResult.Contents || listResult.Contents.length === 0) {
-    return;
-  }
-
-  // オブジェクトを削除
-  const objectsToDelete = listResult.Contents.map((obj) => ({ Key: obj.Key }));
-
-  await s3Client.send(
-    new DeleteObjectsCommand({
-      Bucket: BUCKET_NAME,
-      Delete: {
-        Objects: objectsToDelete,
-      },
-    })
-  );
-}
 
 function corsHeaders() {
   return {

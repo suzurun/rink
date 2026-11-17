@@ -14,8 +14,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { getIdToken } from '../api/auth';
+import { getFreshIdToken } from '../api/auth';
+import { getPropertiesForExport } from '../api/properties';
+import HomeLogo from '../components/HomeLogo';
 
 // API ベース URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -23,6 +24,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 // CSVテンプレートのヘッダー
 const CSV_HEADERS = [
   'propertyId',
+  'rbs',
+  'ownershipType',
   'name',
   'zipcode',
   'prefecture',
@@ -38,13 +41,19 @@ const CSV_HEADERS = [
   'area',
   'owner',
   'staff',
+  'siteStaff',
   'deliveryDate',
   'memo',
+  'signboard',
+  'price',
+  'landUpdateDate',
 ];
 
 // 日本語ヘッダー
 const CSV_HEADERS_JP = [
   '物件ID',
+  '管理先',
+  '物件区分',
   '物件名',
   '郵便番号',
   '都道府県',
@@ -60,13 +69,20 @@ const CSV_HEADERS_JP = [
   '面積',
   '施主',
   '担当者',
+  '現場担当者',
   '引渡時期',
   '備考',
+  '看板',
+  '金額',
+  '更新日',
 ];
 
 // アップロード結果の型
 interface UploadResult {
   successCount: number;
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount: number;
   errorCount: number;
   errors?: Array<{
     row: number;
@@ -80,7 +96,6 @@ interface UploadResult {
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'error';
 
 export default function BulkUpload() {
-  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State
@@ -91,6 +106,7 @@ export default function BulkUpload() {
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [previewData, setPreviewData] = useState<string[][] | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // モバイル検出
   useEffect(() => {
@@ -130,37 +146,14 @@ export default function BulkUpload() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const lines = text.split('\n').filter((line) => line.trim());
-      const rows = lines.slice(0, 6).map((line) => parseCSVLine(line)); // 最初の6行のみ
+      // 備考などセル内の改行で行が崩れないよう、CSV 全体をレコード単位で読む
+      const rows = parseCSVRecords(text.replace(/^\uFEFF/, ''))
+        .filter((r) => r.some((v) => v.trim() !== ''))
+        .slice(0, 6); // 最初の6行のみ
       setPreviewData(rows);
     };
     reader.readAsText(file, 'UTF-8');
   }, []);
-
-  // ========================================
-  // CSVパース（簡易版）
-  // ========================================
-  const parseCSVLine = (line: string): string[] => {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        result.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    result.push(current.trim());
-    return result;
-  };
 
   // ========================================
   // アップロード処理
@@ -174,11 +167,15 @@ export default function BulkUpload() {
     setResult(null);
 
     try {
-      const token = getIdToken();
+      const token = await getFreshIdToken();
 
-      // FormData でファイルを送信
-      const formData = new FormData();
-      formData.append('file', selectedFile);
+      // CSVファイルの内容を読み取ってJSON形式で送信
+      const csvContent = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+        reader.readAsText(selectedFile, 'UTF-8');
+      });
 
       // アップロード進捗シミュレーション
       const progressInterval = setInterval(() => {
@@ -187,12 +184,16 @@ export default function BulkUpload() {
 
       setUploadStatus('processing');
 
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+
       const response = await fetch(`${API_BASE_URL}/properties/bulk`, {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'X-Tenant-Host': hostname,
         },
-        body: formData,
+        body: JSON.stringify({ csv: csvContent }),
       });
 
       clearInterval(progressInterval);
@@ -206,6 +207,9 @@ export default function BulkUpload() {
 
       setResult({
         successCount: data.successCount || 0,
+        createdCount: data.createdCount ?? data.successCount ?? 0,
+        updatedCount: data.updatedCount || 0,
+        unchangedCount: data.unchangedCount || 0,
         errorCount: data.errorCount || 0,
         errors: data.errors,
         errorFileUrl: data.errorFileUrl,
@@ -225,28 +229,13 @@ export default function BulkUpload() {
     // BOM付きUTF-8でCSVを生成
     const bom = '\uFEFF';
     const headerRow = CSV_HEADERS_JP.join(',');
-    const sampleRow = [
-      'P0001',
-      '大谷ビル',
-      '8100004',
-      '福岡県',
-      '福岡市中央区',
-      '薬院1-1-1',
-      '33.583000',
-      '130.394000',
-      '工場',
-      '製造',
-      '食品',
-      '第一種住居地域',
-      '木造',
-      '200',
-      '山田太郎',
-      '佐藤',
-      '20231201',
-      'メモ',
-    ].join(',');
+    // 見本：ビル1行・自社土地1行（管理先は自社土地だけの項目なのでビルは空欄）
+    const sampleRows = [
+      ['P0001', '', 'リンク', '大谷ビル', '8100004', '福岡県', '福岡市中央区', '薬院1-1-1', '33.583000', '130.394000', '工場', '製造', '食品', '第一種住居地域', '木造', '200', '山田太郎', '佐藤', '鈴木', '20231201', 'メモ', '', '', ''],
+      ['L0001', 'リンク', '', '', '', '福岡県', '福岡市南区', '大橋1-2-3', '33.560000', '130.427000', '自社土地', '', '', '', '', '150', '', '佐藤', '', '', '概要メモ', '看板あり', '3,000万円', '20261105'],
+    ].map((r) => r.join(','));
 
-    const csvContent = bom + headerRow + '\n' + sampleRow + '\n';
+    const csvContent = bom + headerRow + '\n' + sampleRows.join('\n') + '\n';
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
 
@@ -257,6 +246,53 @@ export default function BulkUpload() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  // ========================================
+  // CSV エクスポート（現在の物件データを出力）
+  // ========================================
+  const handleExportCSV = async () => {
+    setExporting(true);
+    setError(null);
+
+    try {
+      const response = await getPropertiesForExport();
+
+      if (response.status !== 'success' || !response.data.length) {
+        setError('エクスポートする物件データがありません');
+        setExporting(false);
+        return;
+      }
+
+      const bom = '\uFEFF';
+      const headerRow = CSV_HEADERS_JP.join(',');
+
+      const dataRows = response.data.map((p: Record<string, any>) => {
+        const values = CSV_HEADERS.map((key) => {
+          const val = p[key];
+          if (val == null) return '';
+          return String(val);
+        });
+        return values.map(escapeCSVField).join(',');
+      });
+
+      const csvContent = bom + headerRow + '\n' + dataRows.join('\n') + '\n';
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `properties_export_${today}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'エクスポートに失敗しました');
+    } finally {
+      setExporting(false);
+    }
   };
 
   // ========================================
@@ -284,6 +320,16 @@ export default function BulkUpload() {
   };
 
   // ========================================
+  // CSV値エスケープ
+  // ========================================
+  function escapeCSVField(value: string): string {
+    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
+  // ========================================
   // モバイル警告
   // ========================================
   if (isMobile) {
@@ -300,7 +346,9 @@ export default function BulkUpload() {
             PCでアクセスしてください。
           </p>
           <button
-            onClick={() => router.push('/properties')}
+            onClick={() => {
+              window.location.href = '/properties';
+            }}
             className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
           >
             物件一覧に戻る
@@ -318,15 +366,19 @@ export default function BulkUpload() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-16">
+            <div className="flex items-center gap-3 overflow-x-auto -mx-1 px-1 sm:gap-4 md:overflow-visible md:mx-0 md:px-0">
+              <HomeLogo divider />
               <button
-                onClick={() => router.push('/properties')}
-                className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+                onClick={() => {
+                  window.location.href = '/properties';
+                }}
+                className="shrink-0 p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
               >
                 <BackIcon className="w-5 h-5" />
               </button>
-              <h1 className="text-xl font-bold text-slate-800">物件一括登録</h1>
+              <h1 className="text-xl font-bold text-slate-800 whitespace-nowrap">物件一括登録</h1>
             </div>
           </div>
         </div>
@@ -358,15 +410,37 @@ export default function BulkUpload() {
             />
           </div>
 
-          {/* テンプレートダウンロード */}
+          {/* テンプレートダウンロード & データ出力 */}
           <div className="mt-6 pt-6 border-t border-slate-200">
-            <button
-              onClick={handleDownloadTemplate}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              <DownloadIcon className="w-4 h-4 mr-2" />
-              CSVテンプレートをダウンロード
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handleDownloadTemplate}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <DownloadIcon className="w-4 h-4 mr-2" />
+                CSVテンプレートをダウンロード
+              </button>
+              <button
+                onClick={handleExportCSV}
+                disabled={exporting}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {exporting ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    エクスポート中...
+                  </>
+                ) : (
+                  <>
+                    <ExportIcon className="w-4 h-4 mr-2" />
+                    現在の物件データをCSV出力
+                  </>
+                )}
+              </button>
+            </div>
             <p className="mt-2 text-xs text-slate-500">
               ※ CSVファイルはUTF-8形式で保存してください
             </p>
@@ -523,10 +597,18 @@ export default function BulkUpload() {
             </h2>
 
             {/* サマリー */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-4 gap-4 mb-6">
               <div className="bg-green-50 rounded-lg p-4 text-center">
-                <p className="text-3xl font-bold text-green-600">{result.successCount}</p>
-                <p className="text-sm text-green-700 mt-1">成功</p>
+                <p className="text-3xl font-bold text-green-600">{result.createdCount}</p>
+                <p className="text-sm text-green-700 mt-1">新規登録</p>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-4 text-center">
+                <p className="text-3xl font-bold text-blue-600">{result.updatedCount}</p>
+                <p className="text-sm text-blue-700 mt-1">上書き</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-4 text-center">
+                <p className="text-3xl font-bold text-slate-500">{result.unchangedCount}</p>
+                <p className="text-sm text-slate-600 mt-1">変更なし</p>
               </div>
               <div className="bg-red-50 rounded-lg p-4 text-center">
                 <p className="text-3xl font-bold text-red-600">{result.errorCount}</p>
@@ -574,7 +656,8 @@ export default function BulkUpload() {
             {result.successCount > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <p className="text-sm text-green-700">
-                  {result.successCount}件の物件を登録しました。
+                  {result.createdCount > 0 && `${result.createdCount}件を新規登録しました。`}
+                  {result.updatedCount > 0 && `${result.updatedCount}件を上書きしました。`}
                 </p>
               </div>
             )}
@@ -588,7 +671,9 @@ export default function BulkUpload() {
                 別のファイルをアップロード
               </button>
               <button
-                onClick={() => router.push('/properties')}
+                onClick={() => {
+                  window.location.href = '/properties';
+                }}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 物件一覧へ
@@ -606,8 +691,11 @@ export default function BulkUpload() {
           <ul className="text-sm text-yellow-700 space-y-2">
             <li>• CSVファイルは<strong>UTF-8</strong>形式で保存してください</li>
             <li>• 1行目はヘッダー行として扱われます</li>
-            <li>• <strong>物件ID</strong>、<strong>物件名</strong>、<strong>郵便番号</strong>、<strong>都道府県</strong>、<strong>市区町村</strong>、<strong>番地</strong>、<strong>大項目</strong>は必須です</li>
-            <li>• 既存の物件IDと重複する場合はエラーになります</li>
+            <li>• 必須は<strong>物件ID</strong>のみです（物件名・大項目・住所などは任意）</li>
+            <li>• 登録済みの物件IDは<strong>上書き</strong>されます。値を入れた項目だけ書き換わり、<strong>空欄の項目は今の値のまま</strong>です（CSVで値を消すことはできません）</li>
+            <li>• 書き出したCSVをExcelで保存すると、物件IDの先頭の0（001 → 1）が消えることがあります。その行は新規登録せずエラーにします</li>
+            <li>• <strong>管理先</strong> は「リンク」か「RBS」を入力します（未定なら空欄）</li>
+            <li>• <strong>物件区分</strong> は「リンク」か「預かり」を入力します（未定なら空欄）</li>
             <li>• 一度に登録できるのは最大1,000件までです</li>
           </ul>
         </section>
@@ -706,6 +794,14 @@ function WarningIcon({ className }: { className?: string }) {
   );
 }
 
+function ExportIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  );
+}
+
 function DesktopIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -714,8 +810,50 @@ function DesktopIcon({ className }: { className?: string }) {
   );
 }
 
+// ========================================
+// CSV パース（引用符・セル内改行・CRLF 対応）
+// ========================================
+function parseCSVRecords(text: string): string[][] {
+  const records: string[][] = [];
+  let record: string[] = [];
+  let current = '';
+  let inQuotes = false;
 
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
 
+    if (inQuotes) {
+      if (char === '"' && text[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        current += char;
+      }
+      continue;
+    }
 
+    if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',' || char === '\t') {
+      record.push(current.trim());
+      current = '';
+    } else if (char === '\r' || char === '\n') {
+      if (char === '\r' && text[i + 1] === '\n') i++;
+      record.push(current.trim());
+      records.push(record);
+      record = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
 
+  if (current !== '' || record.length > 0) {
+    record.push(current.trim());
+    records.push(record);
+  }
 
+  return records;
+}

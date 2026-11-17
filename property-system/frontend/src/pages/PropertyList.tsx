@@ -17,7 +17,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProperties } from '../api/properties';
+import { getHistory } from '../api/history';
 import { logout, isAdmin } from '../api/auth';
+import { HistoryEntry } from '../types/history';
+import HomeLogo from '../components/HomeLogo';
 import {
   PropertyListItem,
   PropertySearchParams,
@@ -52,6 +55,8 @@ export default function PropertyList() {
 
   // 管理者権限
   const [isAdminUser, setIsAdminUser] = useState(false);
+  // 最終更新（システム全体で最後に行われた編集）
+  const [lastUpdate, setLastUpdate] = useState<HistoryEntry | null>(null);
 
   // 管理者権限チェック
   useEffect(() => {
@@ -62,11 +67,18 @@ export default function PropertyList() {
     checkAdmin();
   }, []);
 
+  // マップ未登録フィルター
+  const [noMapOnly, setNoMapOnly] = useState(false);
+
   // フィルターパネル表示
   const [showFilters, setShowFilters] = useState(false);
 
   // ビューモード（list / map）
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+
+  // URL から表示状態を復元し終えたか
+  // （復元前に検索を走らせると初期状態のまま取得してしまうため）
+  const [restored, setRestored] = useState(false);
 
   // ========================================
   // データ取得
@@ -103,8 +115,82 @@ export default function PropertyList() {
   }, [currentPage, keyword, typeLarge, typeMedium, staff, sortBy]);
 
   useEffect(() => {
+    if (!restored) return;
     fetchProperties();
-  }, [fetchProperties]);
+  }, [restored, fetchProperties]);
+
+  // ========================================
+  // 表示状態の保存・復元
+  // ブラウザの「戻る」で直前に見ていた一覧（ページ番号・検索条件）に戻すため、
+  // 画面の状態を URL のクエリに持たせる。
+  // ========================================
+
+  // 初回: URL から復元
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    const page = Number(params.get('page'));
+    if (Number.isFinite(page) && page > 0) setCurrentPage(page);
+
+    const restoredKeyword = params.get('keyword') || '';
+    const restoredTypeLarge = params.get('typeLarge') || '';
+    const restoredTypeMedium = params.get('typeMedium') || '';
+    const restoredStaff = params.get('staff') || '';
+
+    setKeyword(restoredKeyword);
+    setTypeLarge(restoredTypeLarge);
+    setTypeMedium(restoredTypeMedium);
+    setStaff(restoredStaff);
+
+    const sort = params.get('sortBy');
+    if (sort === 'name' || sort === 'staff' || sort === 'typeLarge') {
+      setSortBy(sort);
+    }
+
+    setNoMapOnly(params.get('noMap') === '1');
+
+    // 絞り込みが効いている場合は絞り込み欄を開いた状態にする
+    if (restoredTypeLarge || restoredTypeMedium || restoredStaff) {
+      setShowFilters(true);
+    }
+
+    setRestored(true);
+  }, []);
+
+  // 状態が変わるたび URL を書き換える
+  // （replaceState を使い、検索のたびに履歴が増えないようにする）
+  useEffect(() => {
+    if (!restored) return;
+
+    const params = new URLSearchParams();
+    if (currentPage > 1) params.set('page', String(currentPage));
+    if (keyword) params.set('keyword', keyword);
+    if (typeLarge) params.set('typeLarge', typeLarge);
+    if (typeMedium) params.set('typeMedium', typeMedium);
+    if (staff) params.set('staff', staff);
+    if (sortBy !== 'name') params.set('sortBy', sortBy);
+    if (noMapOnly) params.set('noMap', '1');
+
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${query ? `?${query}` : ''}`
+    );
+  }, [restored, currentPage, keyword, typeLarge, typeMedium, staff, sortBy, noMapOnly]);
+
+  // 最終更新の取得（履歴が無い場合や取得失敗時は何も表示しない）
+  useEffect(() => {
+    const fetchLastUpdate = async () => {
+      try {
+        const response = await getHistory({ limit: 1 });
+        setLastUpdate(response.data?.[0] || null);
+      } catch {
+        setLastUpdate(null);
+      }
+    };
+    fetchLastUpdate();
+  }, []);
 
   // ========================================
   // イベントハンドラー
@@ -120,6 +206,7 @@ export default function PropertyList() {
     setTypeLarge('');
     setTypeMedium('');
     setStaff('');
+    setNoMapOnly(false);
     setCurrentPage(1);
   };
 
@@ -149,38 +236,69 @@ export default function PropertyList() {
       {/* ヘッダー */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <h1 className="text-xl font-bold text-slate-800">物件一覧</h1>
+          {/* スマホは幅が足りないので2段（上=ロゴと画面名／下=操作ボタン）にする */}
+          <div className="flex flex-col gap-2 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0 md:h-16">
             <div className="flex items-center gap-3">
+              <HomeLogo divider />
+              <h1 className="text-lg font-bold text-slate-800 whitespace-nowrap md:text-xl">物件一覧</h1>
+            </div>
+            {/* ボタンが入りきらない場合は横スクロール（機能は隠さない） */}
+            <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 md:gap-3 md:overflow-visible md:mx-0 md:px-0">
               {/* ユーザー管理（管理者のみ） */}
               {isAdminUser && (
                 <button
                   onClick={() => router.push('/users')}
-                  className="inline-flex items-center px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   <UsersIcon className="w-4 h-4 mr-1.5" />
                   ユーザー管理
                 </button>
               )}
+              {/* 操作ログ（管理者のみ） */}
+              {isAdminUser && (
+                <button
+                  onClick={() => router.push('/logs')}
+                  className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <HistoryIcon className="w-4 h-4 mr-1.5" />
+                  操作ログ
+                </button>
+              )}
               {/* ログアウトボタン */}
               <button
                 onClick={handleLogout}
-                className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                className="shrink-0 whitespace-nowrap px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 ログアウト
               </button>
               {/* 地図ビュー切替 */}
               <button
                 onClick={handleMapView}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                className="inline-flex shrink-0 whitespace-nowrap items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors md:px-4"
               >
                 <MapIcon className="w-4 h-4 mr-2" />
                 地図で表示
               </button>
+              {/* テーブル閲覧（スマホのみ・閲覧専用） */}
+              <button
+                onClick={() => { window.location.href = '/properties/table?view=1'; }}
+                className="md:hidden inline-flex shrink-0 whitespace-nowrap items-center px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                <TableIcon className="w-4 h-4 mr-1.5" />
+                土地・表を見る
+              </button>
+              {/* テーブル編集（PCのみ） */}
+              <button
+                onClick={() => { window.location.href = '/properties/table'; }}
+                className="hidden md:inline-flex shrink-0 whitespace-nowrap items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                <TableIcon className="w-4 h-4 mr-2" />
+                テーブル編集
+              </button>
               {/* 一括登録（PCのみ） */}
               <button
                 onClick={() => router.push('/bulk-upload')}
-                className="hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                className="hidden md:inline-flex shrink-0 whitespace-nowrap items-center px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <UploadIcon className="w-4 h-4 mr-2" />
                 一括登録
@@ -188,7 +306,7 @@ export default function PropertyList() {
               {/* 新規登録（PCのみ） */}
               <button
                 onClick={handleNewProperty}
-                className="hidden md:inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                className="hidden md:inline-flex shrink-0 whitespace-nowrap items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <PlusIcon className="w-4 h-4 mr-2" />
                 新規登録
@@ -199,6 +317,28 @@ export default function PropertyList() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* 最終更新 */}
+        {lastUpdate && (
+          <button
+            type="button"
+            onClick={() => router.push(`/properties/${lastUpdate.propertyId}`)}
+            className="w-full text-left bg-white rounded-xl shadow-sm border border-slate-200 px-4 py-3 mb-4 hover:border-blue-300 hover:bg-blue-50/40 transition-colors"
+          >
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-xs font-medium text-slate-500">最終更新</span>
+              <span className="text-sm font-semibold text-slate-800">{lastUpdate.userName}</span>
+              <span className="text-sm text-slate-600">
+                {formatDateTime(lastUpdate.timestamp)}
+              </span>
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              <span className="font-medium text-blue-600">{lastUpdate.propertyId}</span>
+              {lastUpdate.propertyName && <span className="ml-1.5">{lastUpdate.propertyName}</span>}
+              <span className="ml-1.5">（{describeLastUpdate(lastUpdate)}）</span>
+            </div>
+          </button>
+        )}
+
         {/* 検索・フィルター */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
           <form onSubmit={handleSearch}>
@@ -223,6 +363,20 @@ export default function PropertyList() {
                   {option.label}
                 </button>
               ))}
+              <div className="ml-auto">
+                <button
+                  type="button"
+                  onClick={() => { setNoMapOnly(!noMapOnly); setCurrentPage(1); }}
+                  className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
+                    noMapOnly
+                      ? 'text-orange-700 bg-orange-50 border-orange-300'
+                      : 'text-slate-700 bg-white border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <NoMapIcon className="w-4 h-4 mr-1.5" />
+                  マップ未登録のみ
+                </button>
+              </div>
             </div>
 
             {/* 検索バー */}
@@ -375,12 +529,14 @@ export default function PropertyList() {
         {/* 物件カード一覧 */}
         {!loading && !error && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {properties.map((property) => (
-              <PropertyCard
-                key={property.propertyId}
-                property={property}
-              />
-            ))}
+            {properties
+              .filter((p) => !noMapOnly || (!p.lat && !p.lng))
+              .map((property) => (
+                <PropertyCard
+                  key={property.propertyId}
+                  property={property}
+                />
+              ))}
           </div>
         )}
 
@@ -441,10 +597,15 @@ function PropertyCard({ property }: PropertyCardProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all">
 
-      {/* 物件名 */}
-      <h3 className="text-lg font-semibold text-slate-800 mb-2 truncate">
-        {property.name}
-      </h3>
+      {/* 物件名 + マップ未登録バッジ */}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h3 className="text-lg font-semibold text-slate-800 truncate">{property.name}</h3>
+        {!property.lat && !property.lng && (
+          <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-full">
+            マップ未登録
+          </span>
+        )}
+      </div>
 
       {/* 住所 */}
       <p className="text-sm text-slate-600 mb-3 flex items-start">
@@ -484,9 +645,7 @@ function PropertyCard({ property }: PropertyCardProps) {
       {/* 詳細ボタン */}
       <div className="mt-4 pt-3 border-t border-slate-100">
         <button
-          onClick={() => {
-            window.location.href = `/properties/${property.propertyId}/`;
-          }}
+          onClick={() => { window.location.href = `/properties/${property.propertyId}/`; }}
           className="block w-full py-2 px-4 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors text-center cursor-pointer"
         >
           詳細を見る →
@@ -519,6 +678,62 @@ function MapIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+    </svg>
+  );
+}
+
+/**
+ * ISO8601 → 2026/08/31 14:20
+ */
+function formatDateTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return isoStr;
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+
+  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
+}
+
+/**
+ * 最終更新の内容を短く説明する
+ * 例: 「担当者を変更」「担当者ほか2項目を変更」「新規登録」
+ */
+function describeLastUpdate(entry: HistoryEntry): string {
+  switch (entry.action) {
+    case 'create':
+      return '新規登録';
+    case 'delete':
+      return '削除';
+    case 'bulkCreate':
+      return 'CSV一括登録';
+    case 'fileUpload':
+      return entry.detail ? `ファイルを追加 ${entry.detail}` : 'ファイルを追加';
+    case 'fileDelete':
+      return entry.detail ? `ファイルを削除 ${entry.detail}` : 'ファイルを削除';
+    case 'update': {
+      const changes = entry.changes || [];
+      if (changes.length === 0) return '編集';
+      if (changes.length === 1) return `${changes[0].label}を変更`;
+      return `${changes[0].label}ほか${changes.length - 1}項目を変更`;
+    }
+    default:
+      return '編集';
+  }
+}
+
+function HistoryIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
     </svg>
   );
 }
@@ -556,6 +771,14 @@ function UserIcon({ className }: { className?: string }) {
   );
 }
 
+function TableIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M10 3v18M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
+    </svg>
+  );
+}
+
 function UploadIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -568,6 +791,14 @@ function ArrowRightIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+    </svg>
+  );
+}
+
+function NoMapIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
     </svg>
   );
 }
